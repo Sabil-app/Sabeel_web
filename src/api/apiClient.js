@@ -1,0 +1,114 @@
+const DEFAULT_BACKEND_URL = "http://192.168.1.194:3001";
+
+export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || DEFAULT_BACKEND_URL;
+
+const getToken = () => {
+  const adminAuthRaw = localStorage.getItem("sabeel_admin_agence_auth");
+  if (adminAuthRaw) {
+    try {
+      const authData = JSON.parse(adminAuthRaw);
+      if (authData?.accessToken) {
+        console.log("[AdminApi] getToken from admin storage", {
+          hasAccessToken: true,
+          activeRole: authData?.user?.activeRole,
+        });
+        return authData.accessToken;
+      }
+    } catch (err) {
+      console.error("Error parsing admin auth data:", err);
+    }
+  }
+
+  const simpleToken = localStorage.getItem("auth_token") || localStorage.getItem("token");
+  if (simpleToken) {
+    console.warn("[AdminApi] getToken falling back to legacy token storage");
+    return simpleToken;
+  }
+
+  console.warn("[AdminApi] getToken found no token");
+  return null;
+};
+
+const apiClient = async (endpoint, options = {}) => {
+  const token = getToken();
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const config = {
+    method: options.method || "GET",
+    headers,
+    ...options,
+  };
+
+  if (config.body && typeof config.body === "object" && !(config.body instanceof FormData)) {
+    config.body = JSON.stringify(config.body);
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
+
+  try {
+    console.log("[AdminApi] request", {
+      endpoint,
+      method: config.method || "GET",
+      hasAuthorization: Boolean(headers["Authorization"]),
+    });
+    const response = await fetch(url, config);
+    const data = await response.json();
+
+    console.log("[AdminApi] response", {
+      endpoint,
+      status: response.status,
+      ok: response.ok,
+    });
+
+    if (!response.ok) {
+      throw { message: data.message || "Request failed", status: response.status, data };
+    }
+
+    return data;
+    return await response.json();
+  } catch (error) {
+    console.error("API call failed:", error);
+    throw error;
+  }
+};
+
+export const apiUpload = async (endpoint, formData) => {
+  const token = getToken();
+
+  const headers = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const url = `${BACKEND_URL}${endpoint}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("API upload failed:", error);
+    throw error;
+  }
+};
+
+export const apiRequest = apiClient;
+
+export default apiClient;

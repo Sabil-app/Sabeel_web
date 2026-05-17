@@ -1,0 +1,253 @@
+/* =========================================================================
+   Sabeel - Agency Theme
+   Elegant premium styling + subtle animations, scoped under `.agency-page`
+   ========================================================================= */
+
+/* --- Keyframes ------------------------------------------------------------ */
+@keyframes agencyFadeInUp {
+  0%   { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes agencyFadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes agencyPulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(27, 94, 32, 0.35); }
+  50%      { box-shadow: 0 0 0 14px rgba(27, 94, 32, 0.00); }
+}
+
+@keyframes agencyShimmer {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
+@keyframes agencyFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@keyframes agencyGradientShift {
+  0%   { background-position:   0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position:   0% 50%; }
+}
+
+/* --- Base page ------------------------------------------------------------ */
+.agency-page {
+  background:
+    radial-gradient(1200px 420px at 0% -10%, rgba(27,94,32,0.06), transparent 60%),
+    radial-gradient(900px 380px at 100% 0%, rgba(76,175,80,0.05), transparent 60%),
+    linear-gradient(180deg, #f7faf7 0%, #f2f5f2 100%);
+  min-height: 100vh;
+  animation: agencyFadeIn 0.4s ease both;
+}
+
+.agency-page .MuiContainer-root,
+.agency-page > .MuiBox-root,
+.agency-page > div {
+  animation: agencyFadeIn 0.4s ease both;
+}
+
+/* --- Page header (reusable premium heading) ------------------------------- */
+.agency-page .agency-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 22px 28px;
+  color: #ffffff;
+  background:
+    linear-gradient(130deg, #0f3d14 0%, #1b5e20 40%, #2e7d32 70%, #43a047 100%);
+  background-size: 200% 200%;
+  animation: agencyGradientShift 12s ease infinite;
+  box-shadow: 0 18px 40px -18px rgba(27, 94, 32, 0.55);
+}
+
+.agency-page .agency-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(255,255,255,0.25), transparent 45%),
+    radial-gradient(circle at 0% 100%, rgba(255,255,255,0.12), transparent 50%);
+  pointer-events: none;
+}
+
+.agency-page .agency-hero__title {
+  font-weight: 800 !important;
+  letter-spacing: -0.3px;
+}
+
+.agency-page .agency-hero__subtitle {
+  opacity: 0.9;
+  font-weight: 400 !important;
+}
+
+/* --- Card / Paper upgrade -------------------------------------------------- */
+.agency-page .MuiCard-root,
+.agency-page .MuiPaper-root:not(.MuiAppBar-root):not(.MuiMenu-paper):not(.MuiPopover-paper):not(.MuiDialog-paper):not(.MuiDrawer-paper) {
+  border-radius: 16px !important;
+  transition:
+    transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.3s ease;
+  border: 1px solid rgba(27, 94, 32, 0.06);
+}
+
+.agency-page .MuiCard-root:hover,
+.agency-page .MuiPaper-root:not(.MuiAppBar-root):not(.MuiMenu-paper):not(.MuiPopover-paper):not(.MuiDialog-paper):not(.MuiDrawer-paper):hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 36px -18px rgba(27, 94, 32, 0.35), 0 8px 22px rgba(0,0,0,0.06) !important;
+  border-color: rgba(27, 94, 32, 0.14);
+}
+
+/* --- Stats / KPI cards (stagger entrance) -------------------------------- */
+.agency-page .stat-card {
+  animation: agencyFadeInUp 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  position: relative;
+  overflow: hidden;
+}
+.agency-page .stat-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #1b5e20, #4caf50, #1b5e20);
+  background-size: 200% 100%;
+  animation: agencyGradientShift 6s ease infinite;
+  opacity: 0.85;
+}
+.agency-page .stat-card:nth-child(1) { animation-delay: 0.05s; }
+.agency-page .stat-card:nth-child(2) { animation-delay: 0.12s; }
+.agency-page .stat-card:nth-child(3) { animation-delay: 0.19s; }
+.agency-page .stat-card:nth-child(4) { animation-delay: 0.26s; }
+
+/* --- Buttons: subtle polish ----------------------------------------------- */
+.agency-page .MuiButton-root {
+  border-radius: 10px !important;
+  text-transform: none !important;
+  letter-spacing: 0.2px !important;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.25s ease,
+    filter 0.2s ease !important;
+  position: relative;
+  overflow: hidden;
+}
+.agency-page .MuiButton-root:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+/* Shine effect on gradient buttons */
+.agency-page .MuiButton-root.MuiButton-contained::after,
+.agency-page .MuiButton-root[class*="gradient"]::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg,
+    transparent, rgba(255,255,255,0.35), transparent);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.agency-page .MuiButton-root.MuiButton-contained:hover::after,
+.agency-page .MuiButton-root[class*="gradient"]:hover::after {
+  animation: agencyShimmer 0.9s ease;
+}
+
+/* --- Tables --------------------------------------------------------------- */
+.agency-page table tbody tr {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.agency-page table tbody tr:hover {
+  background: linear-gradient(90deg, rgba(27,94,32,0.04), rgba(76,175,80,0.03)) !important;
+}
+
+/* --- Inputs --------------------------------------------------------------- */
+.agency-page .MuiOutlinedInput-root {
+  border-radius: 10px !important;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.agency-page .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(27,94,32,0.35) !important;
+}
+.agency-page .MuiOutlinedInput-root.Mui-focused {
+  box-shadow: 0 0 0 4px rgba(27,94,32,0.08);
+}
+.agency-page .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: #1b5e20 !important;
+}
+
+/* --- Badges --------------------------------------------------------------- */
+.agency-page .MuiBadge-badge {
+  font-weight: 700 !important;
+}
+
+/* --- Dialogs -------------------------------------------------------------- */
+.agency-page .MuiDialog-paper,
+body .MuiDialog-paper.agency-dialog {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+.agency-page .MuiDialogTitle-root,
+body .MuiDialog-paper.agency-dialog .MuiDialogTitle-root {
+  background: linear-gradient(90deg, rgba(27,94,32,0.06), rgba(76,175,80,0.03));
+  border-bottom: 1px solid rgba(27,94,32,0.08);
+}
+
+/* --- Hero icon chip ------------------------------------------------------- */
+.agency-page .agency-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.25), rgba(255,255,255,0.08));
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+  animation: agencyFloat 4s ease-in-out infinite;
+}
+
+/* --- Tab pill buttons (used for "Acceptés / Groupes", etc.) --------------- */
+.agency-page .agency-pill-active {
+  background: #0f3d14 !important;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.18) !important;
+}
+
+/* --- Scrollbar ------------------------------------------------------------ */
+.agency-page ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.agency-page ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #1b5e20, #4caf50);
+  border-radius: 8px;
+}
+.agency-page ::-webkit-scrollbar-track {
+  background: rgba(27,94,32,0.05);
+}
+
+/* --- Reveal utility (manual) ---------------------------------------------- */
+.agency-page .reveal-up {
+  animation: agencyFadeInUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.agency-page .reveal-up-1 { animation-delay: 0.05s; }
+.agency-page .reveal-up-2 { animation-delay: 0.12s; }
+.agency-page .reveal-up-3 { animation-delay: 0.19s; }
+.agency-page .reveal-up-4 { animation-delay: 0.26s; }
+.agency-page .reveal-up-5 { animation-delay: 0.33s; }
+
+/* --- Pulse ring utility for status dots ----------------------------------- */
+.agency-page .pulse-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #43a047;
+  box-shadow: 0 0 0 0 rgba(67,160,71,0.6);
+  animation: agencyPulseGlow 1.8s infinite;
+}
