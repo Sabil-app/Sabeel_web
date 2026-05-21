@@ -126,6 +126,7 @@ export async function resetPasswordAdminAgence(email, otp, password) {
 }
 
 export async function uploadMyProfileImage(file) {
+  console.log("[uploadMyProfileImage] Received file:", file);
   const authData = getStoredAuth();
 
   if (!authData?.accessToken) {
@@ -133,6 +134,7 @@ export async function uploadMyProfileImage(file) {
   }
 
   if (!file) {
+    console.error("[uploadMyProfileImage] No file provided");
     throw new Error("File is required");
   }
 

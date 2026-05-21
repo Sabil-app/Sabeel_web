@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_URL = "http://192.168.1.194:3001";
+const DEFAULT_BACKEND_URL = "https://backend-ak3p.onrender.com";
 
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || DEFAULT_BACKEND_URL;
 
@@ -73,7 +73,6 @@ const apiClient = async (endpoint, options = {}) => {
     }
 
     return data;
-    return await response.json();
   } catch (error) {
     console.error("API call failed:", error);
     throw error;
