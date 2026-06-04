@@ -217,7 +217,7 @@ function LandingHowItWorks() {
       </MDBox>
 
       <LandingFooter />
-      <SabeelChatBot />
+      <SabeelChatBot mode="public" />
     </PageLayout>
   );
 }

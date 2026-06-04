@@ -1,6 +1,25 @@
-const DEFAULT_BACKEND_URL = "https://backend-ak3p.onrender.com";
+const DEFAULT_BACKEND_URL = "http://localhost:3000";
 
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || DEFAULT_BACKEND_URL;
+
+export const fetchWithTimeout = async (url, options = {}, timeoutMs = 30000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Request timeout. Vérifiez que le backend est démarré et accessible.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 const getToken = () => {
   const adminAuthRaw = localStorage.getItem("sabeel_admin_agence_auth");
@@ -59,8 +78,8 @@ const apiClient = async (endpoint, options = {}) => {
       method: config.method || "GET",
       hasAuthorization: Boolean(headers["Authorization"]),
     });
-    const response = await fetch(url, config);
-    const data = await response.json();
+    const response = await fetchWithTimeout(url, config);
+    const data = await response.json().catch(() => ({}));
 
     console.log("[AdminApi] response", {
       endpoint,
@@ -90,11 +109,15 @@ export const apiUpload = async (endpoint, formData) => {
   const url = `${BACKEND_URL}${endpoint}`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers,
+        body: formData,
+      },
+      60000
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

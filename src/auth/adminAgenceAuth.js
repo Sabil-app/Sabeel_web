@@ -1,4 +1,4 @@
-import { apiRequest, BACKEND_URL } from "api/apiClient";
+import { apiRequest, BACKEND_URL, fetchWithTimeout } from "api/apiClient";
 
 const API_BASE_URL = `${BACKEND_URL}/admin-agence/auth`;
 const STORAGE_KEY = "sabeel_admin_agence_auth";
@@ -141,20 +141,34 @@ export async function uploadMyProfileImage(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${BACKEND_URL}/admin-agence/auth/me/profile-image`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${authData.accessToken}`,
+  const response = await fetchWithTimeout(
+    `${BACKEND_URL}/admin-agence/auth/me/profile-image`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authData.accessToken}`,
+      },
+      body: formData,
     },
-    body: formData,
-  });
+    120000
+  );
 
-  const data = await response.json();
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       clearAuth();
     }
-    throw new Error(data.message || "Unable to upload profile image");
+    const message =
+      data.message ||
+      (Array.isArray(data.message) ? data.message.join(", ") : null) ||
+      `Unable to upload profile image (${response.status})`;
+    throw new Error(message);
   }
 
   storeAuth({
@@ -180,15 +194,19 @@ export async function uploadMyCoverImage(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch(`${BACKEND_URL}/admin-agence/auth/me/cover-image`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${authData.accessToken}`,
+  const response = await fetchWithTimeout(
+    `${BACKEND_URL}/admin-agence/auth/me/cover-image`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authData.accessToken}`,
+      },
+      body: formData,
     },
-    body: formData,
-  });
+    120000
+  );
 
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       clearAuth();
@@ -255,13 +273,28 @@ export async function fetchAllPilgrimsForAdmin() {
   return data.pilgrims || [];
 }
 
+export async function fetchAdminDashboardOverview() {
+  return apiRequest("/admin-agence/dashboard/overview");
+}
+
+export async function fetchWalletSummary() {
+  return apiRequest("/wallet/me");
+}
+
+export async function fetchWalletTransactions(limit = 50, offset = 0) {
+  return apiRequest(`/wallet/transactions?limit=${limit}&offset=${offset}`);
+}
+
 export async function signUpAgence(payload) {
   const data = await apiRequest("/admin-agence/auth/signup/agence", {
     method: "POST",
     body: payload,
   });
 
-  storeAuth(data);
+  storeAuth({
+    accessToken: data.accessToken,
+    user: data.user,
+  });
   return data;
 }
 
@@ -347,15 +380,19 @@ export async function submitAgencyProfileCompletion(payload) {
     formData.append("contract", payload.contractFile);
   }
 
-  const response = await fetch(`${API_BASE_URL}/agency-profile-completion`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${authData.accessToken}`,
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}/agency-profile-completion`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authData.accessToken}`,
+      },
+      body: formData,
     },
-    body: formData,
-  });
+    240000
+  );
 
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       clearAuth();

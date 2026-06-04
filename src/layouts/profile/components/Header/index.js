@@ -48,17 +48,34 @@ function Header({
   const coverInputRef = useRef(null);
   const [isEditingName, setIsEditingName] = useState(false);
 
-  const handleImageChange = async (e, callback, uploadCallback) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => callback(event.target.result);
-      reader.readAsDataURL(file);
+  const [uploading, setUploading] = useState(false);
 
-      if (uploadCallback) {
+  const handleImageChange = async (e, callback, uploadCallback) => {
+    const input = e.target;
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => callback(event.target.result);
+    reader.readAsDataURL(file);
+
+    if (uploadCallback) {
+      try {
+        setUploading(true);
         await uploadCallback(file);
+      } catch (error) {
+        console.error("[Header] image upload failed:", error);
+        window.alert(
+          error?.message ||
+            "Échec de l'envoi de l'image. Vérifiez que le serveur est démarré et réessayez."
+        );
+      } finally {
+        setUploading(false);
       }
     }
+
+    // Reset so selecting the same file again re-triggers onChange
+    input.value = "";
   };
 
   return (
@@ -97,8 +114,12 @@ function Header({
           position="absolute"
           top={16}
           right={16}
-          sx={{ cursor: "pointer", zIndex: 1 }}
-          onClick={() => coverInputRef.current.click()}
+          sx={{
+            cursor: uploading ? "default" : "pointer",
+            zIndex: 1,
+            opacity: uploading ? 0.5 : 1,
+          }}
+          onClick={() => !uploading && coverInputRef.current.click()}
         >
           <MDBox
             bgColor="success"
@@ -138,8 +159,8 @@ function Header({
               position="absolute"
               bottom={0}
               right={0}
-              sx={{ cursor: "pointer" }}
-              onClick={() => profileInputRef.current.click()}
+              sx={{ cursor: uploading ? "default" : "pointer", opacity: uploading ? 0.5 : 1 }}
+              onClick={() => !uploading && profileInputRef.current.click()}
             >
               <MDBox
                 bgColor="success"

@@ -194,66 +194,71 @@ function Messages() {
     }
   };
 
-  const handlePickContact = async (targetRole, targetId) => {
+  const handlePickContact = async (targetRole, targetId, displayInfo = {}) => {
+    if (!targetId) {
+      // eslint-disable-next-line no-alert
+      window.alert(
+        "Ce guide n'a pas encore de compte associé pour la messagerie. Impossible de le contacter."
+      );
+      return;
+    }
     try {
       const res = await getOrCreateSupportConversation(targetRole, targetId);
       const conversation = res?.conversation;
       if (!conversation?.id) return;
 
+      const roleLabel =
+        targetRole === "agence" ? "Agence" : targetRole === "guide" ? "Guide" : "Pèlerin";
+
       setContacts((prev) => {
-        if (prev.some((c) => c.id === conversation.id)) return prev;
-        return [mapSupportConversationToContact(conversation), ...prev];
+        const base = mapSupportConversationToContact(conversation);
+        const enriched = {
+          ...base,
+          name: displayInfo.name || base.name,
+          role: roleLabel,
+          avatar: displayInfo.avatar || base.avatar,
+          details: {
+            ...base.details,
+            type: roleLabel,
+            contact: displayInfo.name || base.details.contact,
+            email: displayInfo.email || base.details.email,
+            phone: displayInfo.phone || base.details.phone,
+          },
+        };
+        const existingIndex = prev.findIndex((c) => c.id === conversation.id);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = {
+            ...prev[existingIndex],
+            ...enriched,
+            messages: prev[existingIndex].messages,
+          };
+          return next;
+        }
+        return [enriched, ...prev];
       });
       setSelectedContactId(conversation.id);
       setContactDialogOpen(false);
       setContactSearch("");
     } catch (e) {
-      // ignore
+      // eslint-disable-next-line no-alert
+      window.alert(e.message || "Impossible d'ouvrir la conversation.");
     }
   };
 
   useEffect(() => {
-    const incomingContact = location.state?.contactConversation;
-    if (!incomingContact) return;
+    const incoming = location.state?.contactSupport;
+    if (!incoming?.targetRole) return;
 
-    setContacts((prev) => {
-      const existing = prev.find(
-        (contact) =>
-          contact.name.toLowerCase() === incomingContact.name.toLowerCase() &&
-          contact.role.toLowerCase() === incomingContact.role.toLowerCase()
-      );
-
-      if (existing) {
-        setSelectedContactId(existing.id);
-        return prev;
-      }
-
-      const newContact = {
-        id: Date.now(),
-        name: incomingContact.name,
-        role: incomingContact.role,
-        lastMessage: "",
-        time: "Maintenant",
-        unread: 0,
-        messageCount: 0,
-        online: false,
-        avatar:
-          incomingContact.avatar ||
-          "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200&h=200",
-        details: {
-          type: incomingContact.role,
-          contact: incomingContact.name,
-          email: incomingContact.email || "-",
-          phone: incomingContact.phone || "-",
-        },
-        messages: [],
-      };
-
-      setSelectedContactId(newContact.id);
-      return [newContact, ...prev];
+    handlePickContact(incoming.targetRole, incoming.targetId, {
+      name: incoming.name,
+      avatar: incoming.avatar,
+      email: incoming.email,
+      phone: incoming.phone,
     });
 
     window.history.replaceState({}, document.title);
+    // eslint-disable-next-line
   }, [location.state]);
 
   const handleSendMessage = async () => {
@@ -648,7 +653,14 @@ function Messages() {
                         variant="text"
                         color="success"
                         size="small"
-                        onClick={() => handlePickContact("agence", a.id)}
+                        onClick={() =>
+                          handlePickContact("agence", a.id, {
+                            name: a.agencyName || a.fullName,
+                            avatar: a.profileImageUrl || a.profileImagePath,
+                            email: a.email,
+                            phone: a.phoneNumber || a.phone,
+                          })
+                        }
                       >
                         Contacter
                       </MDButton>
@@ -676,7 +688,14 @@ function Messages() {
                         variant="text"
                         color="success"
                         size="small"
-                        onClick={() => handlePickContact("guide", g.id)}
+                        onClick={() =>
+                          handlePickContact("guide", g.type === "agency" ? g.guideUserId : g.id, {
+                            name: g.name,
+                            avatar: g.photo,
+                            email: g.email,
+                            phone: g.phone,
+                          })
+                        }
                       >
                         Contacter
                       </MDButton>
@@ -705,7 +724,14 @@ function Messages() {
                         variant="text"
                         color="success"
                         size="small"
-                        onClick={() => handlePickContact("pelerin", p.id)}
+                        onClick={() =>
+                          handlePickContact("pelerin", p.id, {
+                            name: `${p.firstName || ""} ${p.lastName || ""}`.trim(),
+                            avatar: p.photo,
+                            email: p.email,
+                            phone: p.phoneNumber || p.phone,
+                          })
+                        }
                       >
                         Contacter
                       </MDButton>

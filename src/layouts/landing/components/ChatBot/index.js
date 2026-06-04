@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import PropTypes from "prop-types";
 import Box from "@mui/material/Box";
 import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
@@ -54,7 +55,7 @@ const chatStyles = `
 .chatbot-dot:nth-child(3) { animation-delay: 0.3s; }
 `;
 
-function SabeelChatBot() {
+function SabeelChatBot({ mode }) {
   const { t, lang } = useTranslation();
   const quickReplies = t("chatbot.quickReplies") || [];
   const [open, setOpen] = useState(false);
@@ -63,6 +64,10 @@ function SabeelChatBot() {
   const [typing, setTyping] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
   const scrollRef = useRef(null);
+
+  // "private" = inside the admin/agency space (contextual, user-aware).
+  // "public" = landing page (general questions about Sabeel only).
+  const isPrivate = mode === "private";
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -75,60 +80,62 @@ function SabeelChatBot() {
     if (open && !hasInitialized) {
       const triggerInitialAnalysis = async () => {
         setTyping(true);
-        try {
-          // Check if we have a token (logged in as agency/admin)
-          const adminAuthRaw = localStorage.getItem("sabeel_admin_agence_auth");
-          if (adminAuthRaw) {
-            try {
-              const authData = JSON.parse(adminAuthRaw);
-              const agencyName = authData.user?.agencyName || authData.user?.fullName || "Agence";
-              setMessages([
-                {
-                  from: "bot",
-                  text: `Bonjour ${agencyName} ! Je prépare votre analyse personnalisée...`,
-                },
-              ]);
-            } catch (e) {
-              console.error("Error parsing auth data", e);
-            }
 
-            const response = await chatWithAi(
-              "Analyse ma situation actuelle et donne-moi tes recommandations.",
-              lang
-            );
-            setMessages([{ from: "bot", text: response }]);
-          } else {
-            // Fallback for landing page or unauthenticated
-            const response = await chatWithAiPublic(
-              t("chatbot.greeting_prompt") ||
-                "Présente-toi et explique comment tu peux aider les pèlerins.",
-              lang
-            );
+        let displayName = "";
+        let activeRole = "";
+        if (isPrivate) {
+          try {
+            const adminAuthRaw = localStorage.getItem("sabeel_admin_agence_auth");
+            const authData = adminAuthRaw ? JSON.parse(adminAuthRaw) : null;
+            displayName = authData?.user?.agencyName || authData?.user?.fullName || "";
+            activeRole = String(authData?.user?.activeRole || "").toLowerCase();
+          } catch (e) {
+            console.error("Error parsing auth data", e);
+          }
+        }
+
+        try {
+          if (isPrivate) {
+            const isAgency = activeRole === "agence";
+            const hello = displayName ? `Bonjour ${displayName}. ` : "";
+            const scopeHint = isAgency
+              ? "Posez une question sur votre agence (packs, guides, pèlerins, finances, messages)."
+              : "Posez une question sur la plateforme (apps Pèlerin, Guide, Agence, stats, validations).";
             setMessages([
               {
                 from: "bot",
-                text: response,
+                text: `${hello}${scopeHint}`,
               },
             ]);
+            setHasInitialized(true);
+          } else {
+            const response = await chatWithAiPublic(
+              t("chatbot.greeting_prompt") ||
+                "En 2 phrases maximum, présente Sabeel (apps Pèlerin, Guide, portail Agence) sans salutation.",
+              lang
+            );
+            setMessages([{ from: "bot", text: response }]);
+            setHasInitialized(true);
           }
-          setHasInitialized(true);
         } catch (error) {
-          console.error("Initial analysis failed", error);
+          console.error("Initial chat failed", error);
           setMessages([
             {
               from: "bot",
-              text:
-                t("chatbot.greeting") ||
-                "Assalamu alaykum ! Je suis l'assistant intelligent Sabeel. Comment puis-je vous aider aujourd'hui ?",
+              text: isPrivate
+                ? "Posez votre question sur votre espace connecté."
+                : t("chatbot.greeting") ||
+                  "Assistant Sabeel — posez votre question sur nos services.",
             },
           ]);
+          setHasInitialized(true);
         } finally {
           setTyping(false);
         }
       };
       triggerInitialAnalysis();
     }
-  }, [open, hasInitialized, lang, t]);
+  }, [open, hasInitialized, lang, t, isPrivate]);
 
   const sendMessage = async (text) => {
     const trimmed = text.trim();
@@ -140,9 +147,8 @@ function SabeelChatBot() {
     setTyping(true);
 
     try {
-      // Check if logged in to use private or public API
-      const adminAuthRaw = localStorage.getItem("sabeel_admin_agence_auth");
-      const response = adminAuthRaw
+      // Strictly driven by the mount mode: landing = public, space = private.
+      const response = isPrivate
         ? await chatWithAi(trimmed, lang)
         : await chatWithAiPublic(trimmed, lang);
 
@@ -448,5 +454,13 @@ function SabeelChatBot() {
     </>
   );
 }
+
+SabeelChatBot.propTypes = {
+  mode: PropTypes.oneOf(["public", "private"]),
+};
+
+SabeelChatBot.defaultProps = {
+  mode: "public",
+};
 
 export default SabeelChatBot;

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
 import Card from "@mui/material/Card";
@@ -11,64 +12,134 @@ import MDTypography from "components/MDTypography";
 import { useNavigate } from "react-router-dom";
 
 import AgencyPageShell from "layouts/agency/shared/AgencyPageShell";
+import {
+  fetchAgencyPackUmrah,
+  fetchAgencyGuides,
+  fetchGroups,
+  fetchConfirmedPilgrims,
+  fetchWalletTransactions,
+} from "auth/adminAgenceAuth";
+import { fetchAgencyReservations, fetchMyConversations } from "api/reservationMessagingApi";
+import { fetchAgencySosAlerts } from "api/sosApi";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 function AgencyDashboard() {
   const navigate = useNavigate();
 
-  const kpiStats = [
-    {
-      title: "Packs Actifs",
-      value: 4,
-      delta: "+2",
-      deltaLabel: "ce mois",
-      percent: 72,
-      color: "#0b8f55",
-      bg: "rgba(27,94,32,0.09)",
-      icon: "inventory_2",
-    },
-    {
-      title: "Nombre de Guides",
-      value: 18,
-      delta: "+1",
-      deltaLabel: "ce mois",
-      percent: 58,
-      color: "#1e88e5",
-      bg: "rgba(46,125,50,0.09)",
-      icon: "badge",
-    },
-    {
-      title: "Guides Assignés",
-      value: 12,
-      delta: "+3",
-      deltaLabel: "nouveaux",
-      percent: 64,
-      color: "#8e24aa",
-      bg: "rgba(30,142,62,0.09)",
-      icon: "support_agent",
-    },
-    {
-      title: "Pèlerins Inscrits",
-      value: 145,
-      delta: "+12%",
-      deltaLabel: "vs sem. dernière",
-      percent: 82,
-      color: "#fb8c00",
-      bg: "rgba(67,160,71,0.09)",
-      icon: "group",
-    },
-    {
-      title: "Pèlerins en demande",
-      value: 8,
-      delta: "+5",
-      deltaLabel: "nouvelles demandes",
-      percent: 53,
-      color: "#e53935",
-      bg: "rgba(25,118,210,0.09)",
-      icon: "pending_actions",
-    },
-  ];
+  const [stats, setStats] = useState({
+    activePacks: 0,
+    guides: 0,
+    assignedGuides: 0,
+    registeredPilgrims: 0,
+    pendingPilgrims: 0,
+    conversations: 0,
+    walletPending: 0,
+    openSosAlerts: 0,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const [packs, guides, groups, confirmed, reservations, conversations, walletTx, sosAlerts] =
+        await Promise.all([
+          fetchAgencyPackUmrah().catch(() => []),
+          fetchAgencyGuides().catch(() => []),
+          fetchGroups().catch(() => []),
+          fetchConfirmedPilgrims().catch(() => []),
+          fetchAgencyReservations().catch(() => []),
+          fetchMyConversations().catch(() => []),
+          fetchWalletTransactions(100, 0).catch(() => ({ items: [] })),
+          fetchAgencySosAlerts().catch(() => []),
+        ]);
+
+      if (!mounted) return;
+
+      const packsArr = Array.isArray(packs) ? packs : packs?.packs || [];
+      const guidesArr = Array.isArray(guides) ? guides : guides?.guides || [];
+      const groupsArr = Array.isArray(groups) ? groups : [];
+      const confirmedArr = Array.isArray(confirmed) ? confirmed : [];
+      const reservationsArr = Array.isArray(reservations) ? reservations : [];
+      const conversationsArr = Array.isArray(conversations) ? conversations : [];
+      const walletItems = Array.isArray(walletTx?.items) ? walletTx.items : [];
+
+      const activePacks = packsArr.filter((p) => p?.status === "approved" && !p?.isArchived).length;
+
+      const assignedGuides = new Set(
+        groupsArr.filter((g) => g?.guideId && g?.status !== "archived").map((g) => g.guideId)
+      ).size;
+
+      const pendingPilgrims = reservationsArr.filter((r) => r?.status === "pending").length;
+
+      const walletPending = walletItems.filter(
+        (t) => t?.type === "WITHDRAWAL_REQUEST" && t?.status === "PENDING"
+      ).length;
+
+      const sosArr = Array.isArray(sosAlerts) ? sosAlerts : [];
+      const openSosAlerts = sosArr.filter(
+        (a) => a?.status === "nouveau" || a?.status === "en_cours"
+      ).length;
+
+      setStats({
+        activePacks,
+        guides: guidesArr.length,
+        assignedGuides,
+        registeredPilgrims: confirmedArr.length,
+        pendingPilgrims,
+        conversations: conversationsArr.length,
+        walletPending,
+        openSosAlerts,
+      });
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const kpiStats = useMemo(() => {
+    const raw = [
+      {
+        title: "Packs Actifs",
+        value: stats.activePacks,
+        color: "#0b8f55",
+        bg: "rgba(27,94,32,0.09)",
+        icon: "inventory_2",
+      },
+      {
+        title: "Nombre de Guides",
+        value: stats.guides,
+        color: "#1e88e5",
+        bg: "rgba(46,125,50,0.09)",
+        icon: "badge",
+      },
+      {
+        title: "Guides Assignés",
+        value: stats.assignedGuides,
+        color: "#8e24aa",
+        bg: "rgba(30,142,62,0.09)",
+        icon: "support_agent",
+      },
+      {
+        title: "Pèlerins Inscrits",
+        value: stats.registeredPilgrims,
+        color: "#fb8c00",
+        bg: "rgba(67,160,71,0.09)",
+        icon: "group",
+      },
+      {
+        title: "Pèlerins en demande",
+        value: stats.pendingPilgrims,
+        color: "#e53935",
+        bg: "rgba(25,118,210,0.09)",
+        icon: "pending_actions",
+      },
+    ];
+    const total = raw.reduce((sum, s) => sum + (Number(s.value) || 0), 0);
+    return raw.map((s) => ({
+      ...s,
+      percent: total > 0 ? Math.round((s.value / total) * 100) : 0,
+    }));
+  }, [stats]);
 
   const today = new Date().toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -101,10 +172,7 @@ function AgencyDashboard() {
     },
   ];
 
-  const overallPercent = Math.round(
-    kpiStats.reduce((sum, s) => sum + (Number.isFinite(s.percent) ? s.percent : 0), 0) /
-      Math.max(1, kpiStats.length)
-  );
+  const totalPilgrims = stats.registeredPilgrims + stats.pendingPilgrims;
 
   const doughnutData = {
     labels: kpiStats.map((s) => s.title),
@@ -258,10 +326,10 @@ function AgencyDashboard() {
                   }}
                 >
                   <MDTypography variant="button" fontWeight="medium" color="text">
-                    Score global
+                    Total pèlerins
                   </MDTypography>
                   <MDTypography variant="h3" fontWeight="bold" color="dark" sx={{ lineHeight: 1 }}>
-                    {overallPercent}%
+                    {totalPilgrims}
                   </MDTypography>
                 </MDBox>
               </MDBox>
@@ -379,7 +447,7 @@ function AgencyDashboard() {
                       }}
                     >
                       <MDTypography variant="caption" fontWeight="bold" sx={{ color: "#ef5350" }}>
-                        3
+                        {stats.openSosAlerts}
                       </MDTypography>
                     </MDBox>
                     <Icon sx={{ color: "#ef5350 !important" }}>chevron_right</Icon>
@@ -435,7 +503,7 @@ function AgencyDashboard() {
                       }}
                     >
                       <MDTypography variant="caption" fontWeight="bold" sx={{ color: "#1b5e20" }}>
-                        2
+                        {stats.walletPending}
                       </MDTypography>
                     </MDBox>
                     <Icon sx={{ color: "#1b5e20 !important" }}>chevron_right</Icon>
@@ -490,7 +558,7 @@ function AgencyDashboard() {
                       }}
                     >
                       <MDTypography variant="caption" fontWeight="bold" sx={{ color: "#1a1a1a" }}>
-                        4
+                        {stats.conversations}
                       </MDTypography>
                     </MDBox>
                     <Icon sx={{ color: "#1a1a1a !important" }}>chevron_right</Icon>

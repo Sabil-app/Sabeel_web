@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
@@ -32,21 +32,22 @@ function AdminReclamations() {
   const [actionMenu, setActionMenu] = useState(null);
   const [selectedActionComplaint, setSelectedActionComplaint] = useState(null);
 
-  useState(() => {
-    loadComplaints();
-  }, []);
-
-  const loadComplaints = async () => {
+  const loadComplaints = useCallback(async () => {
     try {
       setLoading(true);
       const data = await fetchComplaints();
-      setComplaints(data);
+      setComplaints(Array.isArray(data) ? data : data?.complaints || []);
     } catch (error) {
       console.error("Failed to load complaints", error);
+      setComplaints([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadComplaints();
+  }, [loadComplaints]);
 
   const filteredComplaints = useMemo(() => {
     const searchLc = searchTerm.trim().toLowerCase();
@@ -144,6 +145,20 @@ function AdminReclamations() {
               </MDBox>
               <Divider />
               <MDBox sx={{ flex: 1, overflowY: "auto" }}>
+                {loading && (
+                  <MDBox p={3} textAlign="center">
+                    <MDTypography variant="button" color="text">
+                      Chargement des réclamations...
+                    </MDTypography>
+                  </MDBox>
+                )}
+                {!loading && filteredComplaints.length === 0 && (
+                  <MDBox p={3} textAlign="center">
+                    <MDTypography variant="button" color="text">
+                      Aucune réclamation pour le moment.
+                    </MDTypography>
+                  </MDBox>
+                )}
                 {filteredComplaints.map((item) => (
                   <MDBox
                     key={item.id}
@@ -238,7 +253,9 @@ function AdminReclamations() {
                           DATE
                         </MDTypography>
                         <MDTypography variant="button" display="block">
-                          {selectedComplaint.date}
+                          {selectedComplaint.createdAt
+                            ? new Date(selectedComplaint.createdAt).toLocaleString("fr-FR")
+                            : selectedComplaint.date || "-"}
                         </MDTypography>
                       </Grid>
                       <Grid item xs={12}>

@@ -24,6 +24,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 
 // Material Dashboard 2 React example components
 import Sidenav from "examples/Sidenav";
+import NotificationCenter from "components/NotificationCenter";
 
 // Material Dashboard 2 React themes
 import theme from "assets/theme";
@@ -132,6 +133,19 @@ export default function App() {
     document.scrollingElement.scrollTop = 0;
   }, [pathname]);
 
+  // Sidebar / route access filtering by admin permissions.
+  // Primary admin sees everything; sub-admins only see items whose required
+  // `permission` is in their permissions array. Items without `permission`
+  // (Dashboard, Messages, Notifications, Settings, Profile...) stay visible.
+  const userPermissions = Array.isArray(currentUser?.permissions) ? currentUser.permissions : [];
+  const canAccessRoute = (route) => {
+    if (!route?.permission) return true;
+    if (currentUser?.isPrimaryAdmin) return true;
+    if (currentUser?.activeRole === "agence") return true;
+    return userPermissions.includes(route.permission);
+  };
+  const visibleAdminRoutes = routes.filter(canAccessRoute);
+
   const getProtectedElement = (route) => {
     if (isPublicRoute) {
       return route.component;
@@ -139,6 +153,15 @@ export default function App() {
 
     if (!authenticated) {
       return <Navigate to="/authentication/sign-in" />;
+    }
+
+    if (
+      route?.permission &&
+      !currentUser?.isPrimaryAdmin &&
+      currentUser?.activeRole !== "agence" &&
+      !userPermissions.includes(route.permission)
+    ) {
+      return <Navigate to="/dashboard" />;
     }
 
     if (pathname.startsWith("/agency") && currentUser?.activeRole !== "agence") {
@@ -187,10 +210,11 @@ export default function App() {
               color={sidenavColor}
               brand={pathname.startsWith("/agency") ? "/images/logo.png" : "/images/log.png"}
               brandName=""
-              routes={pathname.startsWith("/agency") ? agencyRoutes : routes}
+              routes={pathname.startsWith("/agency") ? agencyRoutes : visibleAdminRoutes}
               onMouseEnter={handleOnMouseEnter}
               onMouseLeave={handleOnMouseLeave}
             />
+            {authenticated && <NotificationCenter />}
           </>
         )}
         <Routes>
@@ -209,10 +233,11 @@ export default function App() {
             color={sidenavColor}
             brand={pathname.startsWith("/agency") ? "/images/logo.png" : "/images/log.png"}
             brandName=""
-            routes={pathname.startsWith("/agency") ? agencyRoutes : routes}
+            routes={pathname.startsWith("/agency") ? agencyRoutes : visibleAdminRoutes}
             onMouseEnter={handleOnMouseEnter}
             onMouseLeave={handleOnMouseLeave}
           />
+          {authenticated && <NotificationCenter />}
         </>
       )}
       <Routes>

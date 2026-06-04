@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
-import IconButton from "@mui/material/IconButton";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Divider from "@mui/material/Divider";
+import CircularProgress from "@mui/material/CircularProgress";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemText from "@mui/material/ListItemText";
 
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
@@ -22,257 +25,287 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import DataTable from "examples/Tables/DataTable";
 
-const COMMISSION_RATE = 0.05;
+import {
+  buildIdempotencyKey,
+  createConnectOnboardingLink,
+  fetchAdminPresentielCommissions,
+  fetchAdminWalletOverview,
+  fetchAdminWalletTransactions,
+  fetchConnectStatus,
+  formatWalletMoney,
+  requestAdminWalletWithdrawal,
+} from "api/walletApi";
 
-const initialPayments = [
-  {
-    id: "RSV-1001",
-    agence: "Agence Al Baraka",
-    pelerin: "Ahmed Mansouri",
-    pack: "Umrah Premium Ramadan",
-    total: 8900,
-    advance: 1500,
-    currency: "TND",
-    status: "paid",
-    transferredToMainWallet: false,
-    refunded: false,
-    createdAt: "2026-04-12",
-  },
-  {
-    id: "RSV-1002",
-    agence: "Agence El Nour",
-    pelerin: "Leila Trabelsi",
-    pack: "Umrah Standard",
-    total: 6200,
-    advance: 1000,
-    currency: "TND",
-    status: "partial",
-    transferredToMainWallet: false,
-    refunded: false,
-    createdAt: "2026-04-11",
-  },
-  {
-    id: "RSV-1003",
-    agence: "Agence Al Amal",
-    pelerin: "Fatma Zahra",
-    pack: "Umrah Économique",
-    total: 4300,
-    advance: 800,
-    currency: "TND",
-    status: "paid",
-    transferredToMainWallet: true,
-    refunded: false,
-    createdAt: "2026-04-10",
-  },
-];
+const txTypeLabel = (type) => {
+  const t = String(type || "").toUpperCase();
+  if (t.includes("COMMISSION")) return "Commission 5%";
+  if (t.includes("WITHDRAWAL")) return "Retrait";
+  if (t.includes("EARNING")) return "Versement";
+  if (t.includes("PAYMENT")) return "Paiement";
+  if (t.includes("TOPUP")) return "Recharge";
+  if (t.includes("REFUND")) return "Remboursement";
+  return t || "Transaction";
+};
 
 function AdminFinance() {
-  const [payments, setPayments] = useState(initialPayments);
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState(null);
+  const [transactions, setTransactions] = useState([]);
+  const [presentiel, setPresentiel] = useState({ items: [], paymentProcedure: [] });
   const [search, setSearch] = useState("");
-  const [confirmDialog, setConfirmDialog] = useState({ open: false, type: null, row: null });
+  const [connectStatus, setConnectStatus] = useState({ connected: false, last4: null });
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const formatMoney = (amount, currency) => {
-    if (typeof amount !== "number") return "-";
-    return `${amount.toLocaleString("fr-FR")} ${currency || ""}`.trim();
-  };
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const [ov, tx, pres, connect] = await Promise.all([
+        fetchAdminWalletOverview(),
+        fetchAdminWalletTransactions(100, 0),
+        fetchAdminPresentielCommissions(100, 0),
+        fetchConnectStatus().catch(() => ({ connected: false, last4: null })),
+      ]);
+      setOverview(ov);
+      setTransactions(Array.isArray(tx?.items) ? tx.items : []);
+      setPresentiel({
+        items: Array.isArray(pres?.items) ? pres.items : [],
+        paymentProcedure: Array.isArray(pres?.paymentProcedure) ? pres.paymentProcedure : [],
+        totalDueMillimes: pres?.totalDueMillimes || 0,
+      });
+      setConnectStatus({
+        connected: Boolean(connect?.connected),
+        last4: connect?.last4 || null,
+      });
+    } catch (e) {
+      setError(e?.message || "Impossible de charger les données financières.");
+    }
+  }, []);
 
-  const filteredPayments = useMemo(() => {
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        await load();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [load]);
+
+  const wallet = overview?.wallet;
+  const stats = overview?.stats || {};
+
+  const filteredTx = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return payments;
-
-    return payments.filter((p) => {
-      const haystack = `${p.id} ${p.agence} ${p.pelerin} ${p.pack} ${p.status}`.toLowerCase();
-      return haystack.includes(q);
+    if (!q) return transactions;
+    return transactions.filter((tx) => {
+      const hay = [
+        tx.id,
+        tx.type,
+        tx.pilgrimName,
+        tx.agencyName,
+        tx.packageName,
+        tx.referenceId,
+        tx.recipientType,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
     });
-  }, [payments, search]);
+  }, [transactions, search]);
 
-  const totals = useMemo(() => {
-    const paidTotals = payments
-      .filter((p) => p.status === "paid")
-      .reduce((sum, p) => sum + p.total, 0);
-    const totalAdvances = payments.reduce((sum, p) => sum + (p.advance || 0), 0);
-    const commissions = payments.reduce((sum, p) => sum + p.total * COMMISSION_RATE, 0);
+  const txRows = filteredTx.map((tx) => ({
+    id: tx.id?.slice(0, 8) || "—",
+    type: txTypeLabel(tx.type),
+    pilgrim: tx.pilgrimName || "—",
+    party: tx.agencyName || tx.recipientType || "—",
+    amount: formatWalletMoney(tx.direction === "incoming" ? tx.amount : -tx.amount, tx.currency),
+    date: tx.createdAt ? new Date(tx.createdAt).toLocaleDateString("fr-FR") : "—",
+    status: tx.status || "—",
+  }));
 
-    return {
-      paidTotals,
-      totalAdvances,
-      commissions,
-    };
-  }, [payments]);
+  const presentielRows = presentiel.items.map((row) => ({
+    id: row.reservationId?.slice(0, 8) || "—",
+    owner: row.ownerName,
+    ownerType: row.ownerType === "GUIDE" ? "Guide" : "Agence",
+    pilgrim: row.pilgrimName,
+    pack: row.packageName || "—",
+    commission: formatWalletMoney(row.commissionDueMillimes, "TND"),
+    status: "À régler",
+  }));
 
-  const getStatusColor = (status) => {
-    if (status === "paid") return "success";
-    if (status === "partial") return "warning";
-    return "error";
+  const handleConnect = async () => {
+    try {
+      const res = await createConnectOnboardingLink("AGENCY");
+      if (res?.url) window.open(res.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e?.message || "Impossible d'ouvrir Stripe Connect.");
+    }
   };
 
-  const getStatusLabel = (status) => {
-    if (status === "paid") return "Payé";
-    if (status === "partial") return "Acompte";
-    return "En attente";
-  };
+  const handleWithdraw = async () => {
+    const amountTnd = Number(String(withdrawAmount).replace(",", "."));
+    if (!Number.isFinite(amountTnd) || amountTnd <= 0) return;
 
-  const openConfirm = (type, row) => setConfirmDialog({ open: true, type, row });
-  const closeConfirm = () => setConfirmDialog({ open: false, type: null, row: null });
-
-  const applyAction = () => {
-    if (!confirmDialog.row || !confirmDialog.type) return;
-
-    const id = confirmDialog.row.id;
-
-    if (confirmDialog.type === "transfer") {
-      setPayments((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, transferredToMainWallet: true } : p))
-      );
+    const amountCents = Math.floor(amountTnd * 1000);
+    const available = wallet?.availableBalance || 0;
+    if (amountCents > available) {
+      setError(`Solde insuffisant (max ${formatWalletMoney(available, wallet?.currency)}).`);
+      return;
     }
 
-    if (confirmDialog.type === "refund") {
-      setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, refunded: true } : p)));
+    if (!connectStatus.connected) {
+      setError("Configurez Stripe Connect (carte / compte) avant de retirer.");
+      return;
     }
 
-    closeConfirm();
+    setWithdrawLoading(true);
+    setError("");
+    try {
+      await requestAdminWalletWithdrawal({
+        amountCents,
+        idempotencyKey: buildIdempotencyKey("admin-wd"),
+      });
+      setWithdrawOpen(false);
+      setWithdrawAmount("");
+      await load();
+    } catch (e) {
+      setError(e?.message || "Échec de la demande de retrait.");
+    } finally {
+      setWithdrawLoading(false);
+    }
   };
 
-  const StatusBadgeCell = ({ value }) => (
-    <MDBadge
-      badgeContent={getStatusLabel(value)}
-      color={getStatusColor(value)}
-      variant="gradient"
-      size="xs"
-    />
-  );
-
-  StatusBadgeCell.propTypes = {
-    value: PropTypes.string.isRequired,
-  };
-
-  const TotalMoneyCell = ({ row }) => (
-    <MDTypography variant="button" color="dark" fontWeight="medium">
-      {formatMoney(row.original.total, row.original.currency)}
+  const AmountCell = ({ value }) => (
+    <MDTypography variant="button" fontWeight="bold">
+      {value}
     </MDTypography>
   );
+  AmountCell.propTypes = { value: PropTypes.string.isRequired };
 
-  TotalMoneyCell.propTypes = {
-    row: PropTypes.shape({
-      original: PropTypes.shape({
-        total: PropTypes.number,
-        currency: PropTypes.string,
-      }),
-    }).isRequired,
-  };
+  const TableAmountCell = ({ value }) => <AmountCell value={value} />;
+  TableAmountCell.propTypes = { value: PropTypes.string.isRequired };
 
-  const CommissionCell = ({ row }) => (
-    <MDTypography variant="button" color="dark" fontWeight="medium">
-      {formatMoney(row.original.total * COMMISSION_RATE, row.original.currency)}
-    </MDTypography>
+  const PresentielStatusCell = ({ value }) => (
+    <MDBadge badgeContent={value} color="warning" variant="gradient" size="xs" />
   );
+  PresentielStatusCell.propTypes = { value: PropTypes.string.isRequired };
 
-  CommissionCell.propTypes = {
-    row: PropTypes.shape({
-      original: PropTypes.shape({
-        total: PropTypes.number,
-        currency: PropTypes.string,
-      }),
-    }).isRequired,
-  };
+  const txColumns = [
+    { Header: "ID", accessor: "id", width: "10%" },
+    { Header: "Type", accessor: "type", width: "14%" },
+    { Header: "Pèlerin", accessor: "pilgrim", width: "16%" },
+    { Header: "Agence / Guide", accessor: "party", width: "18%" },
+    { Header: "Montant", accessor: "amount", Cell: TableAmountCell },
+    { Header: "Date", accessor: "date", width: "12%" },
+    { Header: "Statut", accessor: "status", width: "10%" },
+  ];
 
-  const ActionsCell = ({ row }) => (
-    <MDBox display="flex" justifyContent="flex-end" gap={0.5}>
-      <IconButton
-        size="small"
-        onClick={() => openConfirm("transfer", row.original)}
-        disabled={row.original.transferredToMainWallet || row.original.refunded}
-      >
-        <Icon fontSize="small">sync_alt</Icon>
-      </IconButton>
-      <IconButton
-        size="small"
-        onClick={() => openConfirm("refund", row.original)}
-        disabled={row.original.refunded}
-      >
-        <Icon fontSize="small">undo</Icon>
-      </IconButton>
-    </MDBox>
-  );
-
-  ActionsCell.propTypes = {
-    row: PropTypes.shape({
-      original: PropTypes.shape({
-        id: PropTypes.string,
-        transferredToMainWallet: PropTypes.bool,
-        refunded: PropTypes.bool,
-      }),
-    }).isRequired,
-  };
-
-  const columns = [
-    { Header: "Réservation", accessor: "id", width: "12%" },
-    { Header: "Agence", accessor: "agence", width: "18%" },
-    { Header: "Pèlerin", accessor: "pelerin", width: "14%" },
-    { Header: "Pack", accessor: "pack", width: "18%" },
+  const presentielColumns = [
+    { Header: "Réf.", accessor: "id", width: "10%" },
+    { Header: "Payeur", accessor: "owner", width: "18%" },
+    { Header: "Type", accessor: "ownerType", width: "10%" },
+    { Header: "Pèlerin", accessor: "pilgrim", width: "16%" },
+    { Header: "Pack / Guide", accessor: "pack", width: "18%" },
+    {
+      Header: "Commission 5%",
+      accessor: "commission",
+      Cell: TableAmountCell,
+    },
     {
       Header: "Statut",
       accessor: "status",
-      width: "10%",
-      Cell: StatusBadgeCell,
-    },
-    {
-      Header: "Total",
-      accessor: "total",
-      width: "10%",
-      Cell: TotalMoneyCell,
-    },
-    {
-      Header: "Commission (5%)",
-      accessor: "commission",
-      width: "12%",
-      Cell: CommissionCell,
-    },
-    {
-      Header: "Actions",
-      accessor: "actions",
-      Cell: ActionsCell,
+      Cell: PresentielStatusCell,
     },
   ];
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <DashboardNavbar />
+        <MDBox py={6} display="flex" justifyContent="center">
+          <CircularProgress color="success" />
+        </MDBox>
+        <Footer />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox py={3}>
+        {error ? (
+          <MDBox mb={2}>
+            <MDTypography variant="button" color="error">
+              {error}
+            </MDTypography>
+          </MDBox>
+        ) : null}
+
         <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="caption" color="text" display="block">
-                  Paiements (total)
+                  Solde disponible (plateforme)
                 </MDTypography>
                 <MDTypography variant="h5" fontWeight="bold">
-                  {formatMoney(totals.paidTotals, "TND")}
+                  {formatWalletMoney(wallet?.availableBalance, wallet?.currency)}
+                </MDTypography>
+                <MDTypography variant="caption" color="text">
+                  En attente : {formatWalletMoney(wallet?.pendingBalance, wallet?.currency)}
                 </MDTypography>
               </MDBox>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="caption" color="text" display="block">
-                  Acomptes encaissés
+                  Commissions reçues (en ligne)
                 </MDTypography>
                 <MDTypography variant="h5" fontWeight="bold">
-                  {formatMoney(totals.totalAdvances, "TND")}
+                  {formatWalletMoney(stats.totalCommissionReceived, "TND")}
                 </MDTypography>
               </MDBox>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Card>
               <MDBox p={3}>
                 <MDTypography variant="caption" color="text" display="block">
-                  Commissions Sabeel (5%)
+                  Commissions présentiel (à régler)
                 </MDTypography>
                 <MDTypography variant="h5" fontWeight="bold">
-                  {formatMoney(totals.commissions, "TND")}
+                  {formatWalletMoney(presentiel.totalDueMillimes, "TND")}
                 </MDTypography>
+              </MDBox>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card>
+              <MDBox p={3} display="flex" flexDirection="column" gap={1}>
+                <MDTypography variant="caption" color="text">
+                  Stripe Connect
+                  {connectStatus.last4 ? ` •••• ${connectStatus.last4}` : ""}
+                </MDTypography>
+                <MDButton variant="gradient" color="success" size="small" onClick={handleConnect}>
+                  {connectStatus.connected ? "Mettre à jour" : "Configurer carte"}
+                </MDButton>
+                <MDButton
+                  variant="outlined"
+                  color="dark"
+                  size="small"
+                  onClick={() => setWithdrawOpen(true)}
+                  disabled={!wallet?.availableBalance}
+                >
+                  Retirer le solde
+                </MDButton>
               </MDBox>
             </Card>
           </Grid>
@@ -282,10 +315,10 @@ function AdminFinance() {
               <MDBox p={3} display="flex" justifyContent="space-between" alignItems="center">
                 <MDBox>
                   <MDTypography variant="h6" fontWeight="medium">
-                    Gestion financière
+                    Transactions plateforme (5 % & flux)
                   </MDTypography>
                   <MDTypography variant="button" color="text">
-                    Suivi paiements, acomptes, transferts wallet, remboursements.
+                    Commissions en ligne créditées sur le wallet Sabeel + mouvements.
                   </MDTypography>
                 </MDBox>
                 <MDBox width="16rem">
@@ -300,9 +333,54 @@ function AdminFinance() {
               </MDBox>
               <MDBox pt={1}>
                 <DataTable
-                  table={{ columns, rows: filteredPayments }}
+                  table={{ columns: txColumns, rows: txRows }}
                   isSorted
                   entriesPerPage
+                  showTotalEntries
+                  noEndBorder
+                />
+              </MDBox>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={5}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h6" fontWeight="medium" mb={1}>
+                  Procédure paiement présentiel → Sabeel
+                </MDTypography>
+                <List dense>
+                  {(presentiel.paymentProcedure.length
+                    ? presentiel.paymentProcedure
+                    : overview?.paymentProcedure || []
+                  ).map((step, idx) => (
+                    <ListItem key={step} disableGutters>
+                      <ListItemText
+                        primary={`${idx + 1}. ${step}`}
+                        primaryTypographyProps={{ variant: "button" }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </MDBox>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={7}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h6" fontWeight="medium">
+                  Commissions 5 % — réservations présentiel
+                </MDTypography>
+                <MDTypography variant="button" color="text" display="block" mb={1}>
+                  À envoyer à Sabeel après encaissement sur place (agence / guide).
+                </MDTypography>
+              </MDBox>
+              <MDBox pt={1}>
+                <DataTable
+                  table={{ columns: presentielColumns, rows: presentielRows }}
+                  isSorted
+                  entriesPerPage={{ defaultValue: 5 }}
                   showTotalEntries
                   noEndBorder
                 />
@@ -312,37 +390,32 @@ function AdminFinance() {
         </Grid>
       </MDBox>
 
-      <Dialog open={confirmDialog.open} onClose={closeConfirm} maxWidth="xs" fullWidth>
-        <DialogTitle>
-          <MDTypography variant="h6" fontWeight="bold">
-            Confirmation
-          </MDTypography>
-        </DialogTitle>
+      <Dialog open={withdrawOpen} onClose={() => setWithdrawOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Retrait wallet plateforme</DialogTitle>
         <DialogContent>
-          <MDBox>
-            <MDTypography variant="button" color="text" display="block">
-              {confirmDialog.type === "transfer"
-                ? "Confirmer le transfert vers le wallet principal ?"
-                : "Confirmer le remboursement ?"}
-            </MDTypography>
-            <Divider sx={{ my: 2 }} />
-            <MDTypography variant="caption" color="text" display="block">
-              Réservation: {confirmDialog.row?.id}
-            </MDTypography>
-            <MDTypography variant="caption" color="text" display="block">
-              Agence: {confirmDialog.row?.agence}
-            </MDTypography>
-            <MDTypography variant="caption" color="text" display="block">
-              Pèlerin: {confirmDialog.row?.pelerin}
-            </MDTypography>
-          </MDBox>
+          <MDTypography variant="caption" color="text" display="block" mb={2}>
+            Disponible : {formatWalletMoney(wallet?.availableBalance, wallet?.currency)} — délai
+            max. 48h (Stripe Connect).
+          </MDTypography>
+          <MDInput
+            type="number"
+            label="Montant (TND)"
+            value={withdrawAmount}
+            onChange={(e) => setWithdrawAmount(e.target.value)}
+            fullWidth
+          />
         </DialogContent>
         <DialogActions>
-          <MDButton onClick={closeConfirm} color="dark" variant="text">
+          <MDButton variant="text" color="dark" onClick={() => setWithdrawOpen(false)}>
             Annuler
           </MDButton>
-          <MDButton onClick={applyAction} color="success" variant="gradient">
-            Confirmer
+          <MDButton
+            variant="gradient"
+            color="success"
+            onClick={handleWithdraw}
+            disabled={withdrawLoading}
+          >
+            {withdrawLoading ? "Envoi..." : "Confirmer"}
           </MDButton>
         </DialogActions>
       </Dialog>

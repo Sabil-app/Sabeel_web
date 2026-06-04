@@ -1,7 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
+import CircularProgress from "@mui/material/CircularProgress";
+import { fetchAgencyReservations } from "api/reservationMessagingApi";
+import {
+  buildIdempotencyKey,
+  createConnectOnboardingLink,
+  fetchConnectStatus,
+  fetchWalletMe,
+  fetchWalletTransactions,
+  formatWalletMoney,
+  requestWalletWithdrawal,
+} from "api/walletApi";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
@@ -9,7 +20,6 @@ import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
-import Autocomplete from "@mui/material/Autocomplete";
 import Divider from "@mui/material/Divider";
 
 // Material Dashboard 2 React components
@@ -32,106 +42,13 @@ function AgencyDepenses() {
   const [showAllDeposits, setShowAllDeposits] = useState(false);
   const [showAllLedger, setShowAllLedger] = useState(false);
 
-  const [pilgrimDeposits, setPilgrimDeposits] = useState([
-    {
-      id: "dep_1",
-      pilgrimId: "pil_101",
-      pilgrimName: "Ahmed Mansouri",
-      pack: "Umrah Premium",
-      amount: 500,
-      date: "2026-04-10",
-      status: "transféré",
-      paymentType: "en_ligne",
-      rdvDate: null,
-    },
-    {
-      id: "dep_2",
-      pilgrimId: "pil_102",
-      pilgrimName: "Leila Trabelsi",
-      pack: "Umrah Standard",
-      amount: 400,
-      date: "2026-04-12",
-      status: "transféré",
-      paymentType: "sur_place",
-      rdvDate: "2026-05-01",
-    },
-    {
-      id: "dep_3",
-      pilgrimId: "pil_103",
-      pilgrimName: "Mohamed Ben Ali",
-      pack: "Umrah Premium Ramadan",
-      amount: 600,
-      date: "2026-04-15",
-      status: "transféré",
-      paymentType: "en_ligne",
-      rdvDate: null,
-    },
-    {
-      id: "dep_4",
-      pilgrimId: "pil_104",
-      pilgrimName: "Hassan Moussa",
-      pack: "Umrah Économique",
-      amount: 300,
-      date: "2026-04-16",
-      status: "transféré",
-      paymentType: "sur_place",
-      rdvDate: "2026-05-05",
-    },
-    {
-      id: "dep_5",
-      pilgrimId: "pil_105",
-      pilgrimName: "Amira Ben Salem",
-      pack: "Umrah Premium",
-      amount: 750,
-      date: "2026-04-18",
-      status: "transféré",
-      paymentType: "en_ligne",
-      rdvDate: null,
-    },
-  ]);
-
-  const [walletLedger, setWalletLedger] = useState([
-    {
-      id: "tx_1",
-      type: "credit",
-      source: "Avance - Leila Trabelsi",
-      amount: 400,
-      date: "2026-04-12",
-      status: "confirmé",
-    },
-    {
-      id: "tx_2",
-      type: "debit",
-      source: "Withdraw vers compte agence",
-      amount: 200,
-      date: "2026-04-13",
-      status: "confirmé",
-    },
-    {
-      id: "tx_3",
-      type: "credit",
-      source: "Avance - Ahmed Mansouri",
-      amount: 500,
-      date: "2026-04-14",
-      status: "confirmé",
-    },
-    {
-      id: "tx_4",
-      type: "credit",
-      source: "Avance - Mohamed Ben Ali",
-      amount: 600,
-      date: "2026-04-15",
-      status: "confirmé",
-    },
-    {
-      id: "tx_5",
-      type: "debit",
-      source: "Withdraw - Frais logistique",
-      amount: 150,
-      date: "2026-04-16",
-      status: "confirmé",
-    },
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [walletData, setWalletData] = useState(null);
+  const [connectStatus, setConnectStatus] = useState({ connected: false, last4: null });
+  const [pilgrimDeposits, setPilgrimDeposits] = useState([]);
+  const [walletLedger, setWalletLedger] = useState([]);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
 
   const [openTransfer, setOpenTransfer] = useState(false);
   const [openWithdraw, setOpenWithdraw] = useState(false);
@@ -145,16 +62,107 @@ function AgencyDepenses() {
 
   const [withdrawForm, setWithdrawForm] = useState({
     amount: "",
-    method: "Virement bancaire",
+    method: "Carte Stripe Connect",
     accountRef: "",
   });
 
-  const formatMoney = (value) => `${Number(value || 0).toLocaleString()} DT`;
+  const mapReservationToDeposit = (r) => {
+    const mode = String(r.paymentMode || "").toLowerCase();
+    const isOnline =
+      mode === "online" ||
+      String(r.paymentType || "")
+        .toLowerCase()
+        .includes("wallet");
+    const advance = Number(r.advanceAmount || 0);
+    const created = r.createdAt ? new Date(r.createdAt).toISOString().slice(0, 10) : "";
+    let status = "à transférer";
+    if (r.status === "accepted" && advance > 0) {
+      status = isOnline ? "transféré" : "sur place (hors wallet)";
+    }
+    if (r.status === "pending") status = "en attente";
 
-  const walletBalance = walletLedger.reduce(
-    (acc, tx) => acc + (tx.type === "credit" ? tx.amount : -tx.amount),
-    0
-  );
+    return {
+      id: r.id,
+      pilgrimId: r.pilgrimUserId || r.id,
+      pilgrimName: r.pilgrimName || "—",
+      pack: r.packageName || "—",
+      amount: advance,
+      date: created,
+      status,
+      paymentType: isOnline ? "en_ligne" : "sur_place",
+      rdvDate: r.reservationDate || null,
+    };
+  };
+
+  const mapTxToLedger = (tx, walletId) => {
+    const incoming = String(tx.toWalletId || "") === String(walletId || "");
+    const amountTnd = Number(tx.amount || 0) / 1000;
+    const typeLabel = String(tx.type || "").toUpperCase();
+    let source = typeLabel;
+    if (typeLabel.includes("EARNING")) source = "Versement réservation";
+    if (typeLabel.includes("WITHDRAWAL")) source = "Retrait";
+    if (typeLabel.includes("COMMISSION")) source = "Commission plateforme";
+
+    return {
+      id: tx.id,
+      type: incoming ? "credit" : "debit",
+      source,
+      amount: amountTnd,
+      date: tx.createdAt ? new Date(tx.createdAt).toISOString().slice(0, 10) : "",
+      status: String(tx.status || "confirmé").toLowerCase(),
+    };
+  };
+
+  const loadWalletData = useCallback(async () => {
+    setLoadError("");
+    try {
+      const [meRes, txRes, reservations, connect] = await Promise.all([
+        fetchWalletMe(),
+        fetchWalletTransactions(100, 0),
+        fetchAgencyReservations().catch(() => []),
+        fetchConnectStatus().catch(() => ({ connected: false, last4: null })),
+      ]);
+
+      const wallet = meRes?.wallet || null;
+      setWalletData(wallet);
+      setConnectStatus({
+        connected: Boolean(connect?.connected),
+        last4: connect?.last4 || null,
+      });
+
+      const walletId = wallet?.id;
+      const items = Array.isArray(txRes?.items) ? txRes.items : [];
+      setWalletLedger(items.map((tx) => mapTxToLedger(tx, walletId)));
+
+      const resList = Array.isArray(reservations) ? reservations : [];
+      setPilgrimDeposits(
+        resList.filter((r) => Number(r.advanceAmount || 0) > 0).map(mapReservationToDeposit)
+      );
+    } catch (e) {
+      setLoadError(e?.message || "Impossible de charger le wallet.");
+    }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        await loadWalletData();
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [loadWalletData]);
+
+  const formatMoney = (value) => {
+    if (walletData?.availableBalance != null && value === walletData.availableBalance / 1000) {
+      return formatWalletMoney(walletData.availableBalance, walletData.currency);
+    }
+    return `${Number(value || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} DT`;
+  };
+
+  const walletBalanceMillimes = walletData?.availableBalance || 0;
+  const walletBalance = walletBalanceMillimes / 1000;
 
   // Nouveaux calculs pour les statistiques
   const totalAdvanceAmount = pilgrimDeposits.reduce((acc, d) => acc + d.amount, 0);
@@ -186,34 +194,10 @@ function AgencyDepenses() {
   };
 
   const handleConfirmTransfer = () => {
-    const deposit = pilgrimDeposits.find((d) => d.id === selectedDepositId);
-    if (!deposit) {
-      handleCloseTransfer();
-      return;
-    }
-
-    if (deposit.status === "transféré") {
-      handleCloseTransfer();
-      return;
-    }
-
-    setPilgrimDeposits((prev) =>
-      prev.map((d) => (d.id === selectedDepositId ? { ...d, status: "transféré" } : d))
-    );
-
-    setWalletLedger((prev) => [
-      {
-        id: `tx_${Date.now()}`,
-        type: "credit",
-        source: `Avance - ${deposit.pilgrimName}${transferNote ? ` (${transferNote})` : ""}`,
-        amount: deposit.amount,
-        date: new Date().toISOString().slice(0, 10),
-        status: "confirmé",
-      },
-      ...prev,
-    ]);
-
     handleCloseTransfer();
+    setLoadError(
+      "Les avances en ligne sont créditées automatiquement sur le wallet. Les paiements sur place sont hors wallet Stripe."
+    );
   };
 
   const handleOpenWithdraw = () => {
@@ -223,26 +207,42 @@ function AgencyDepenses() {
 
   const handleCloseWithdraw = () => setOpenWithdraw(false);
 
-  const handleConfirmWithdraw = () => {
-    const amount = parseFloat(withdrawForm.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return;
-    if (amount > walletBalance) return;
+  const handleConnectStripe = async () => {
+    try {
+      const res = await createConnectOnboardingLink("AGENCY");
+      if (res?.url) window.open(res.url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setLoadError(e?.message || "Impossible d'ouvrir Stripe Connect.");
+    }
+  };
 
-    setWalletLedger((prev) => [
-      {
-        id: `tx_${Date.now()}`,
-        type: "debit",
-        source: `Withdraw (${withdrawForm.method})${
-          withdrawForm.accountRef ? ` - ${withdrawForm.accountRef}` : ""
-        }`,
-        amount,
-        date: new Date().toISOString().slice(0, 10),
-        status: "confirmé",
-      },
-      ...prev,
-    ]);
+  const handleConfirmWithdraw = async () => {
+    const amountTnd = parseFloat(withdrawForm.amount);
+    if (!Number.isFinite(amountTnd) || amountTnd <= 0) return;
 
-    handleCloseWithdraw();
+    const amountCents = Math.floor(amountTnd * 1000);
+    if (amountCents > walletBalanceMillimes) return;
+
+    if (!connectStatus.connected) {
+      setLoadError("Configurez Stripe Connect (carte) avant de retirer.");
+      await handleConnectStripe();
+      return;
+    }
+
+    setWithdrawLoading(true);
+    setLoadError("");
+    try {
+      await requestWalletWithdrawal({
+        amountCents,
+        idempotencyKey: buildIdempotencyKey("ag-wd"),
+      });
+      handleCloseWithdraw();
+      await loadWalletData();
+    } catch (e) {
+      setLoadError(e?.message || "Échec de la demande de retrait.");
+    } finally {
+      setWithdrawLoading(false);
+    }
   };
 
   const AmountCell = ({ value }) => (
@@ -525,10 +525,29 @@ function AgencyDepenses() {
 
   const selectedDeposit = pilgrimDeposits.find((d) => d.id === selectedDepositId);
 
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <DashboardNavbar />
+        <MDBox py={6} display="flex" justifyContent="center">
+          <CircularProgress color="success" />
+        </MDBox>
+        <Footer />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox py={3}>
+        {loadError ? (
+          <MDBox mb={2}>
+            <MDTypography variant="button" color="error">
+              {loadError}
+            </MDTypography>
+          </MDBox>
+        ) : null}
         <MDBox mb={3} display="flex" justifyContent="space-between" alignItems="center">
           <MDBox>
             <MDTypography variant="h4" fontWeight="bold">
@@ -539,9 +558,16 @@ function AgencyDepenses() {
             </MDTypography>
           </MDBox>
           <MDBox display="flex" gap={1.5}>
+            <MDButton variant="outlined" color="info" onClick={handleConnectStripe}>
+              <Icon sx={{ fontWeight: "bold" }}>credit_card</Icon>
+              &nbsp;
+              {connectStatus.connected
+                ? `Carte •••• ${connectStatus.last4 || "—"}`
+                : "Configurer Stripe"}
+            </MDButton>
             <MDButton variant="outlined" color="dark" onClick={handleOpenWithdraw}>
               <Icon sx={{ fontWeight: "bold" }}>south</Icon>
-              &nbsp;Withdraw
+              &nbsp;Retrait
             </MDButton>
           </MDBox>
         </MDBox>
@@ -552,7 +578,7 @@ function AgencyDepenses() {
               color="success"
               icon="account_balance_wallet"
               title="Solde Wallet"
-              count={formatMoney(walletBalance)}
+              count={formatWalletMoney(walletBalanceMillimes, walletData?.currency)}
               percentage={{ color: "success", amount: "", label: "Disponible" }}
             />
           </Grid>
@@ -746,18 +772,9 @@ function AgencyDepenses() {
                   parseFloat(withdrawForm.amount) > walletBalance)
               }
             />
-            <Autocomplete
-              options={["Virement bancaire", "Cash", "Autre"]}
-              renderInput={(params) => <MDInput {...params} label="Méthode" fullWidth />}
-              value={withdrawForm.method}
-              onChange={(event, newValue) => setWithdrawForm({ ...withdrawForm, method: newValue })}
-            />
-            <MDInput
-              label="Référence / Compte (optionnel)"
-              value={withdrawForm.accountRef}
-              onChange={(e) => setWithdrawForm({ ...withdrawForm, accountRef: e.target.value })}
-              fullWidth
-            />
+            <MDTypography variant="caption" color="text">
+              Retrait vers votre carte / compte Stripe Connect (délai max. 48h).
+            </MDTypography>
           </MDBox>
         </DialogContent>
         <DialogActions>
@@ -769,12 +786,13 @@ function AgencyDepenses() {
             color="success"
             variant="gradient"
             disabled={
+              withdrawLoading ||
               !withdrawForm.amount ||
               parseFloat(withdrawForm.amount) <= 0 ||
               parseFloat(withdrawForm.amount) > walletBalance
             }
           >
-            Valider
+            {withdrawLoading ? "Envoi..." : "Valider"}
           </MDButton>
         </DialogActions>
       </Dialog>

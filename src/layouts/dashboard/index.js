@@ -14,8 +14,10 @@ Coded by www.creative-tim.com
 */
 
 // @mui material components
+import { useEffect, useState } from "react";
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
+import CircularProgress from "@mui/material/CircularProgress";
 
 import { Bar, Line } from "react-chartjs-2";
 import {
@@ -40,6 +42,8 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import ComplexStatisticsCard from "examples/Cards/StatisticsCards/ComplexStatisticsCard";
 
+import { fetchAdminDashboardOverview } from "auth/adminAgenceAuth";
+
 // Data (removed unused campaign/task chart data)
 
 // Dashboard components
@@ -57,19 +61,38 @@ ChartJS.register(
 );
 
 function Dashboard() {
-  // Show number of users per app as requested
+  const [overview, setOverview] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await fetchAdminDashboardOverview();
+        if (mounted) setOverview(data);
+      } catch (error) {
+        console.error("[Dashboard] failed to load overview", error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const kpis = {
-    usersSabeel: 12450,
-    usersSabeelGuide: 3820,
-    usersAgences: 240,
+    usersSabeel: overview?.counts?.pilgrims ?? 0,
+    usersSabeelGuide: overview?.counts?.guides ?? 0,
+    usersAgences: overview?.counts?.agencies ?? 0,
   };
 
   const monthlyChart = {
-    labels: ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"],
+    labels: overview?.monthlyReservations?.labels ?? [],
     datasets: [
       {
         label: "Réservations",
-        data: [120, 98, 140, 160, 190, 220, 240, 210, 195, 260, 275, 300],
+        data: overview?.monthlyReservations?.data ?? [],
         borderColor: "#2e7d32",
         backgroundColor: "rgba(46, 125, 50, 0.12)",
         tension: 0.35,
@@ -78,18 +101,18 @@ function Dashboard() {
   };
 
   const revenueChart = {
-    labels: ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin"],
+    labels: overview?.monthlyRevenue?.labels ?? [],
     datasets: [
       {
         label: "Revenus",
-        data: [22000, 25500, 27000, 34250, 31000, 36500],
+        data: overview?.monthlyRevenue?.revenue ?? [],
         backgroundColor: "rgba(25, 118, 210, 0.35)",
         borderColor: "#1976d2",
         borderWidth: 1,
       },
       {
-        label: "Commissions (5%)",
-        data: [1100, 1275, 1350, 1712, 1550, 1825],
+        label: "Commissions",
+        data: overview?.monthlyRevenue?.commission ?? [],
         backgroundColor: "rgba(46, 125, 50, 0.35)",
         borderColor: "#2e7d32",
         borderWidth: 1,
@@ -106,12 +129,15 @@ function Dashboard() {
     },
   };
 
-  const formatMoney = (amount) => `${amount.toLocaleString("fr-FR")} TND`;
-
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox py={3}>
+        {loading && (
+          <MDBox display="flex" justifyContent="center" alignItems="center" py={6}>
+            <CircularProgress color="success" />
+          </MDBox>
+        )}
         <Grid container spacing={3}>
           <Grid item xs={12} md={6} lg={4}>
             <MDBox mb={1.5}>
@@ -122,8 +148,8 @@ function Dashboard() {
                 count={kpis.usersSabeel}
                 percentage={{
                   color: "success",
-                  amount: "+2%",
-                  label: "sur 30 jours",
+                  amount: `${overview?.counts?.accompagnants ?? 0}`,
+                  label: "accompagnants inclus",
                 }}
               />
             </MDBox>
@@ -136,9 +162,9 @@ function Dashboard() {
                 title="Utilisateurs - Sabeel Guide"
                 count={kpis.usersSabeelGuide}
                 percentage={{
-                  color: "success",
-                  amount: "+1%",
-                  label: "sur 30 jours",
+                  color: "info",
+                  amount: "",
+                  label: "guides inscrits",
                 }}
               />
             </MDBox>
@@ -152,8 +178,8 @@ function Dashboard() {
                 count={kpis.usersAgences}
                 percentage={{
                   color: "success",
-                  amount: "+0%",
-                  label: "ce mois",
+                  amount: `${overview?.counts?.activeAgencies ?? 0}`,
+                  label: "actives",
                 }}
               />
             </MDBox>

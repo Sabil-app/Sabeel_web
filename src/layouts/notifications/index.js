@@ -1,189 +1,249 @@
-/**
-=========================================================
-* Material Dashboard 2 React - v2.2.0
-=========================================================
+import { useCallback, useEffect, useState } from "react";
 
-* Product Page: https://www.creative-tim.com/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-import { useState } from "react";
-
-// @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
+import Icon from "@mui/material/Icon";
+import Divider from "@mui/material/Divider";
+import Chip from "@mui/material/Chip";
 
-// Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-import MDAlert from "components/MDAlert";
 import MDButton from "components/MDButton";
-import MDSnackbar from "components/MDSnackbar";
 
-// Material Dashboard 2 React example components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
+import {
+  createNotificationsSocket,
+  fetchMyNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "api/notificationsApi";
+
+const iconForType = (type) => {
+  switch (type) {
+    case "agency_submission":
+      return "storefront";
+    case "guide_submission":
+      return "groups";
+    case "reservation":
+      return "event_available";
+    case "chat":
+    case "admin_message":
+      return "chat";
+    case "sos":
+    case "sos_alert":
+      return "sos";
+    case "review":
+      return "star";
+    default:
+      return "notifications";
+  }
+};
+
+const colorForType = (type) => {
+  switch (type) {
+    case "sos":
+    case "sos_alert":
+      return "error.main";
+    case "reservation":
+      return "success.main";
+    case "chat":
+    case "admin_message":
+      return "warning.main";
+    default:
+      return "info.main";
+  }
+};
+
+const formatDate = (value) => {
+  if (!value) return "";
+  return new Date(value).toLocaleString("fr-FR");
+};
+
 function Notifications() {
-  const [successSB, setSuccessSB] = useState(false);
-  const [infoSB, setInfoSB] = useState(false);
-  const [warningSB, setWarningSB] = useState(false);
-  const [errorSB, setErrorSB] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const openSuccessSB = () => setSuccessSB(true);
-  const closeSuccessSB = () => setSuccessSB(false);
-  const openInfoSB = () => setInfoSB(true);
-  const closeInfoSB = () => setInfoSB(false);
-  const openWarningSB = () => setWarningSB(true);
-  const closeWarningSB = () => setWarningSB(false);
-  const openErrorSB = () => setErrorSB(true);
-  const closeErrorSB = () => setErrorSB(false);
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetchMyNotifications({ limit: 100, offset: 0 });
+      setNotifications(Array.isArray(res?.items) ? res.items : []);
+    } catch (e) {
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const alertContent = (name) => (
-    <MDTypography variant="body2" color="white">
-      A simple {name} alert with{" "}
-      <MDTypography component="a" href="#" variant="body2" fontWeight="medium" color="white">
-        an example link
-      </MDTypography>
-      . Give it a click if you like.
-    </MDTypography>
-  );
+  useEffect(() => {
+    load();
 
-  const renderSuccessSB = (
-    <MDSnackbar
-      color="success"
-      icon="check"
-      title="Material Dashboard"
-      content="Hello, world! This is a notification message"
-      dateTime="11 mins ago"
-      open={successSB}
-      onClose={closeSuccessSB}
-      close={closeSuccessSB}
-      bgWhite
-    />
-  );
+    let socket;
+    let timer;
+    try {
+      socket = createNotificationsSocket();
+      socket.on("new_notification", () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => load(), 700);
+      });
+    } catch (e) {
+      // socket optional
+    }
 
-  const renderInfoSB = (
-    <MDSnackbar
-      icon="notifications"
-      title="Material Dashboard"
-      content="Hello, world! This is a notification message"
-      dateTime="11 mins ago"
-      open={infoSB}
-      onClose={closeInfoSB}
-      close={closeInfoSB}
-    />
-  );
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (socket) socket.disconnect();
+    };
+  }, [load]);
 
-  const renderWarningSB = (
-    <MDSnackbar
-      color="warning"
-      icon="star"
-      title="Material Dashboard"
-      content="Hello, world! This is a notification message"
-      dateTime="11 mins ago"
-      open={warningSB}
-      onClose={closeWarningSB}
-      close={closeWarningSB}
-      bgWhite
-    />
-  );
+  const handleMarkRead = async (notification) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notification.id ? { ...n, readAt: new Date().toISOString() } : n))
+    );
+    try {
+      await markNotificationRead(notification.id);
+    } catch (e) {
+      // ignore
+    }
+  };
 
-  const renderErrorSB = (
-    <MDSnackbar
-      color="error"
-      icon="warning"
-      title="Material Dashboard"
-      content="Hello, world! This is a notification message"
-      dateTime="11 mins ago"
-      open={errorSB}
-      onClose={closeErrorSB}
-      close={closeErrorSB}
-      bgWhite
-    />
-  );
+  const handleMarkAllRead = async () => {
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, readAt: n.readAt || new Date().toISOString() }))
+    );
+    try {
+      await markAllNotificationsRead();
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox mt={6} mb={3}>
         <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12} lg={8}>
+          <Grid item xs={12} lg={9}>
             <Card>
-              <MDBox p={2}>
-                <MDTypography variant="h5">Alerts</MDTypography>
+              <MDBox
+                p={2}
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+                flexWrap="wrap"
+                gap={1}
+              >
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <MDTypography variant="h5">Notifications</MDTypography>
+                  {unreadCount > 0 && (
+                    <Chip label={`${unreadCount} non lue(s)`} color="success" size="small" />
+                  )}
+                </MDBox>
+                <MDBox display="flex" gap={1}>
+                  <MDButton
+                    variant="outlined"
+                    color="dark"
+                    size="small"
+                    onClick={load}
+                    startIcon={<Icon>refresh</Icon>}
+                  >
+                    Actualiser
+                  </MDButton>
+                  <MDButton
+                    variant="gradient"
+                    color="success"
+                    size="small"
+                    onClick={handleMarkAllRead}
+                    disabled={unreadCount === 0}
+                    startIcon={<Icon>done_all</Icon>}
+                  >
+                    Tout marquer lu
+                  </MDButton>
+                </MDBox>
               </MDBox>
-              <MDBox pt={2} px={2}>
-                <MDAlert color="primary" dismissible>
-                  {alertContent("primary")}
-                </MDAlert>
-                <MDAlert color="secondary" dismissible>
-                  {alertContent("secondary")}
-                </MDAlert>
-                <MDAlert color="success" dismissible>
-                  {alertContent("success")}
-                </MDAlert>
-                <MDAlert color="error" dismissible>
-                  {alertContent("error")}
-                </MDAlert>
-                <MDAlert color="warning" dismissible>
-                  {alertContent("warning")}
-                </MDAlert>
-                <MDAlert color="info" dismissible>
-                  {alertContent("info")}
-                </MDAlert>
-                <MDAlert color="light" dismissible>
-                  {alertContent("light")}
-                </MDAlert>
-                <MDAlert color="dark" dismissible>
-                  {alertContent("dark")}
-                </MDAlert>
-              </MDBox>
-            </Card>
-          </Grid>
+              <Divider />
 
-          <Grid item xs={12} lg={8}>
-            <Card>
-              <MDBox p={2} lineHeight={0}>
-                <MDTypography variant="h5">Notifications</MDTypography>
-                <MDTypography variant="button" color="text" fontWeight="regular">
-                  Notifications on this page use Toasts from Bootstrap. Read more details here.
-                </MDTypography>
-              </MDBox>
               <MDBox p={2}>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6} lg={3}>
-                    <MDButton variant="gradient" color="success" onClick={openSuccessSB} fullWidth>
-                      success notification
-                    </MDButton>
-                    {renderSuccessSB}
-                  </Grid>
-                  <Grid item xs={12} sm={6} lg={3}>
-                    <MDButton variant="gradient" color="info" onClick={openInfoSB} fullWidth>
-                      info notification
-                    </MDButton>
-                    {renderInfoSB}
-                  </Grid>
-                  <Grid item xs={12} sm={6} lg={3}>
-                    <MDButton variant="gradient" color="warning" onClick={openWarningSB} fullWidth>
-                      warning notification
-                    </MDButton>
-                    {renderWarningSB}
-                  </Grid>
-                  <Grid item xs={12} sm={6} lg={3}>
-                    <MDButton variant="gradient" color="error" onClick={openErrorSB} fullWidth>
-                      error notification
-                    </MDButton>
-                    {renderErrorSB}
-                  </Grid>
-                </Grid>
+                {loading && (
+                  <MDBox p={3} textAlign="center">
+                    <MDTypography variant="button" color="text">
+                      Chargement des notifications...
+                    </MDTypography>
+                  </MDBox>
+                )}
+
+                {!loading && notifications.length === 0 && (
+                  <MDBox p={4} textAlign="center">
+                    <Icon sx={{ fontSize: "48px !important", color: "grey-400" }}>
+                      notifications_off
+                    </Icon>
+                    <MDTypography variant="h6" color="text" mt={1}>
+                      Aucune notification
+                    </MDTypography>
+                  </MDBox>
+                )}
+
+                {!loading &&
+                  notifications.map((notification) => {
+                    const type = notification?.data?.type;
+                    const isUnread = !notification.readAt;
+                    return (
+                      <MDBox
+                        key={notification.id}
+                        display="flex"
+                        alignItems="flex-start"
+                        gap={1.5}
+                        p={1.5}
+                        mb={1}
+                        sx={{
+                          borderRadius: 2,
+                          backgroundColor: isUnread ? "rgba(46,125,50,0.06)" : "transparent",
+                          border: "1px solid",
+                          borderColor: isUnread ? "success.main" : "grey-200",
+                        }}
+                      >
+                        <MDBox
+                          width={40}
+                          height={40}
+                          borderRadius="50%"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          sx={{ backgroundColor: colorForType(type), flexShrink: 0 }}
+                        >
+                          <Icon sx={{ color: "white !important" }}>{iconForType(type)}</Icon>
+                        </MDBox>
+                        <MDBox flex={1} minWidth={0}>
+                          <MDBox display="flex" justifyContent="space-between" alignItems="center">
+                            <MDTypography variant="button" fontWeight="bold">
+                              {notification.title}
+                            </MDTypography>
+                            <MDTypography variant="caption" color="text">
+                              {formatDate(notification.createdAt)}
+                            </MDTypography>
+                          </MDBox>
+                          <MDTypography variant="caption" color="text" display="block">
+                            {notification.body}
+                          </MDTypography>
+                        </MDBox>
+                        {isUnread && (
+                          <MDButton
+                            variant="text"
+                            color="success"
+                            size="small"
+                            onClick={() => handleMarkRead(notification)}
+                          >
+                            OK
+                          </MDButton>
+                        )}
+                      </MDBox>
+                    );
+                  })}
               </MDBox>
             </Card>
           </Grid>

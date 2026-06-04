@@ -1506,7 +1506,7 @@ function Landing() {
       </MDBox>
 
       <LandingFooter />
-      <SabeelChatBot />
+      <SabeelChatBot mode="public" />
     </PageLayout>
   );
 }

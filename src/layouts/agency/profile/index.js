@@ -31,6 +31,7 @@ import {
   uploadMyCoverImage,
   uploadMyProfileImage,
 } from "auth/adminAgenceAuth";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 function AgencyProfile() {
   const navigate = useNavigate();
@@ -101,13 +102,13 @@ function AgencyProfile() {
     setContractDuration(user.contractDuration || 12);
     setIsFinalized(Boolean(user.profileCompletionSubmitted));
     setAgencyStatus(user.status || "pending");
-    setContractFileUrl(user.contractFileUrl || "");
+    setContractFileUrl(resolveMediaUrl(user.contractFileUrl || user.contractFilePath) || "");
     setContractFileName(user.contractFileName || "");
-    setSignatureFileUrl(user.signatureFileUrl || "");
+    setSignatureFileUrl(resolveMediaUrl(user.signatureFileUrl) || "");
     setContractExpired(Boolean(user.contractExpired));
 
-    setProfileImage(user.profileImageUrl || "");
-    setCoverImage(user.coverImageUrl || "");
+    setProfileImage(resolveMediaUrl(user.profileImageUrl || user.profileImagePath) || "");
+    setCoverImage(resolveMediaUrl(user.coverImageUrl || user.coverImagePath) || "");
 
     if (user.contractStartDate || user.contractEndDate) {
       setDates({
@@ -143,11 +144,99 @@ function AgencyProfile() {
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && currentDoc) {
-      setUploadedDocs((prev) => ({ ...prev, [currentDoc]: file.name }));
-      setUploadedDocFiles((prev) => ({ ...prev, [currentDoc]: file }));
+  // Cloudinary (free plan) rejects files larger than 10MB. Keep a safety margin.
+  const MAX_UPLOAD_BYTES = 9.5 * 1024 * 1024;
+
+  const compressImageFile = (file, maxBytes) =>
+    new Promise((resolve) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const MAX_DIMENSION = 2000;
+        let { width, height } = img;
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const tryQuality = (quality) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                resolve(file);
+                return;
+              }
+              if (blob.size <= maxBytes || quality <= 0.4) {
+                const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+                resolve(new File([blob], newName, { type: "image/jpeg" }));
+                return;
+              }
+              tryQuality(quality - 0.15);
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+        tryQuality(0.8);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      };
+      img.src = objectUrl;
+    });
+
+  const handleFileChange = async (e) => {
+    let file = e.target.files[0];
+    if (e.target) {
+      e.target.value = "";
+    }
+    if (!file || !currentDoc) return;
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      if (file.type.startsWith("image/")) {
+        file = await compressImageFile(file, MAX_UPLOAD_BYTES);
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        const mb = (file.size / (1024 * 1024)).toFixed(1);
+        window.alert(
+          `Le fichier "${file.name}" est trop volumineux (${mb} Mo). ` +
+            `La taille maximale autorisée est de 10 Mo. ` +
+            `Veuillez compresser le document (ou réduire la qualité du PDF) puis réessayer.`
+        );
+        return;
+      }
+    }
+
+    setUploadedDocs((prev) => ({ ...prev, [currentDoc]: file.name }));
+    setUploadedDocFiles((prev) => ({ ...prev, [currentDoc]: file }));
+  };
+
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadedDocs((prev) => ({ ...prev, signature: file.name }));
+    setSignatureFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setSignatureImage(event.target?.result || null);
+      setIsSigned(true);
+    };
+    reader.readAsDataURL(file);
+
+    if (e.target) {
+      e.target.value = "";
     }
   };
 
@@ -197,16 +286,23 @@ function AgencyProfile() {
     if (!element) return null;
 
     const canvas = await html2canvas(element, {
-      scale: 2,
+      scale: 1.5,
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
     });
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "mm", "a4");
+    // Use JPEG with compression instead of PNG to keep the contract well under
+    // Cloudinary's 10MB per-file limit (PNG at scale 2 easily exceeds it).
+    const imgData = canvas.toDataURL("image/jpeg", 0.7);
+    const pdf = new jsPDF({
+      orientation: "p",
+      unit: "mm",
+      format: "a4",
+      compress: true,
+    });
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
 
     return pdf.output("blob");
   };

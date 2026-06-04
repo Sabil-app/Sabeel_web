@@ -26,14 +26,23 @@ function Header({
 
   const handleImageChange = async (e, callback, uploadCallback) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => callback(event.target.result);
-      reader.readAsDataURL(file);
+    if (!file) return;
 
-      if (uploadCallback) {
+    const reader = new FileReader();
+    reader.onload = (event) => callback(event.target.result);
+    reader.readAsDataURL(file);
+
+    if (uploadCallback) {
+      try {
         await uploadCallback(file);
+      } catch (error) {
+        console.error("Image upload failed:", error);
+        alert(error?.message || "Échec de l'upload de l'image.");
       }
+    }
+
+    if (e.target) {
+      e.target.value = "";
     }
   };
 

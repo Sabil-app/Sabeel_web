@@ -61,6 +61,7 @@ const routes = [
     icon: <Icon fontSize="small">storefront</Icon>,
     route: "/tables",
     component: <Agences />,
+    permission: "Gestion des Agences",
   },
   {
     type: "collapse",
@@ -69,6 +70,7 @@ const routes = [
     icon: <Icon fontSize="small">groups</Icon>,
     route: "/guides",
     component: <Guides />,
+    permission: "Gestion des Guides",
   },
   {
     type: "collapse",
@@ -85,6 +87,7 @@ const routes = [
     icon: <Icon fontSize="small">account_balance_wallet</Icon>,
     route: "/admin/finance",
     component: <AdminFinance />,
+    permission: "Voir Wallet & Finances",
   },
   {
     type: "collapse",
@@ -93,6 +96,7 @@ const routes = [
     icon: <Icon fontSize="small">report_problem</Icon>,
     route: "/reclamations",
     component: <AdminReclamations />,
+    permission: "Gestion des Agences",
   },
   {
     key: "admin-agency-packs",

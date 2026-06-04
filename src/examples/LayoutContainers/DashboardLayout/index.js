@@ -53,7 +53,7 @@ function DashboardLayout({ children }) {
       })}
     >
       {children}
-      <SabeelChatBot />
+      <SabeelChatBot mode="private" />
     </MDBox>
   );
 }

@@ -24,7 +24,7 @@ import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
 import { fetchAllGuides, verifyGuideDocuments, rejectGuideDocuments } from "auth/adminAgenceAuth";
-import { BACKEND_URL } from "api/apiClient";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 function Guides() {
   const [guides, setGuides] = useState([]);
@@ -66,11 +66,7 @@ function Guides() {
     }
   };
 
-  const getFullImageUrl = (path) => {
-    if (!path) return "";
-    if (path.startsWith("http")) return path;
-    return `${BACKEND_URL}/${path}`;
-  };
+  const getFullImageUrl = (path) => resolveMediaUrl(path) || "";
 
   const handleExpandClick = (id) => {
     setExpandedId(expandedId === id ? null : id);
@@ -712,9 +708,11 @@ function Guides() {
             component={Link}
             to="/messages"
             state={{
-              contactConversation: {
+              contactSupport: {
+                targetRole: "guide",
+                targetId:
+                  selectedGuide?.type === "agency" ? selectedGuide?.guideUserId : selectedGuide?.id,
                 name: selectedGuide?.name,
-                role: selectedGuide?.type === "agency" ? "Guide agence" : "Guide freelance",
                 email: selectedGuide?.email,
                 phone: selectedGuide?.phone,
                 avatar: selectedGuide?.photo,

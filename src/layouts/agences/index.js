@@ -43,7 +43,7 @@ import {
   fetchAgencyPackUmrahForAdmin,
   fetchAgencyPackUmrahCountForAdmin,
 } from "auth/adminAgenceAuth";
-import { BACKEND_URL } from "api/apiClient";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 function Agences() {
   const [agences, setAgences] = useState([]);
@@ -77,16 +77,10 @@ function Agences() {
       const agenciesWithCounts = await Promise.all(
         data.map(async (a) => {
           const count = await fetchAgencyPackUmrahCountForAdmin(a.id || a._id);
-          const getFullUrl = (path) => {
-            if (!path) return null;
-            if (path.startsWith("http")) return path;
-            return `${BACKEND_URL}/${path}`;
-          };
-
           const docsMap = {};
           if (a.agencyDocuments && Array.isArray(a.agencyDocuments)) {
             a.agencyDocuments.forEach((doc) => {
-              docsMap[doc.label] = doc.url || getFullUrl(doc.path);
+              docsMap[doc.label] = resolveMediaUrl(doc.url || doc.path);
             });
           }
 
@@ -94,7 +88,8 @@ function Agences() {
             ...a,
             id: a.id || a._id,
             nom: a.agencyName || a.nom || "Agence sans nom",
-            logo: a.profileImageUrl || getFullUrl(a.profileImage) || a.logo,
+            logo:
+              resolveMediaUrl(a.profileImageUrl || a.profileImagePath || a.profileImage) || a.logo,
             responsable: a.responsibleName || a.responsable || "N/A",
             fonction: a.responsibleTitle || a.fonction || "N/A",
             status: a.submissionStatus || a.status || "pending",
@@ -117,7 +112,7 @@ function Agences() {
             })(),
             packCount: count,
             documents: docsMap,
-            contractUrl: a.contractFileUrl || getFullUrl(a.contractFilePath),
+            contractUrl: resolveMediaUrl(a.contractFileUrl || a.contractFilePath),
             contractFileName: a.contractFileName || "Contrat_Signé.pdf",
             telephone: a.phoneNumber || "N/A",
             adresse: a.agencyAddress || "N/A",
@@ -729,7 +724,21 @@ function Agences() {
                 </MenuItem>
               )}
               <Divider sx={{ my: 0.5 }} />
-              <MenuItem component={Link} to="/messages" onClick={handleActionMenuClose}>
+              <MenuItem
+                component={Link}
+                to="/messages"
+                state={{
+                  contactSupport: {
+                    targetRole: "agence",
+                    targetId: selectedAgence?.id,
+                    name: selectedAgence?.nom,
+                    avatar: selectedAgence?.logo,
+                    email: selectedAgence?.email,
+                    phone: selectedAgence?.telephone,
+                  },
+                }}
+                onClick={handleActionMenuClose}
+              >
                 <Icon sx={{ mr: 1, color: "info.main" }}>chat</Icon> Contacter
               </MenuItem>
               <MenuItem onClick={() => handleViewAgencyPacks(selectedAgence)}>

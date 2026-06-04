@@ -25,91 +25,18 @@ import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
 
 import AgencyPageShell from "layouts/agency/shared/AgencyPageShell";
+import {
+  fetchAgencySosAlerts,
+  updateAgencySosAlertStatus,
+  addAgencySosAlertNote,
+} from "api/sosApi";
 
 function AgencySosAlerts() {
   const navigate = useNavigate();
 
-  const [alerts, setAlerts] = useState([
-    {
-      id: "sos_1",
-      guideName: "Youssef Ben Salah",
-      guidePhone: "+216 22 111 222",
-      group: {
-        name: "Groupe A - Omra Ramadan",
-        pack: "Omra Premium 15 jours",
-        pilgrimCount: 22,
-        startDate: "2026-03-15",
-        endDate: "2026-03-30",
-      },
-      title: "Urgence médicale",
-      message: "Un pèlerin a une forte douleur thoracique. Besoin d'assistance immédiate.",
-      location: {
-        address: "Médine - Hôtel Al Noor",
-        lat: 24.4672,
-        lng: 39.6111,
-        lastUpdate: new Date(Date.now() - 45 * 1000).toISOString(),
-      },
-      date: "2026-04-19 14:30",
-      severity: "critique",
-      status: "nouveau",
-      timeline: [{ time: "14:30", text: "Alerte envoyée par le guide", type: "alert" }],
-    },
-    {
-      id: "sos_2",
-      guideName: "Sara Mansour",
-      guidePhone: "+216 22 333 444",
-      group: {
-        name: "Groupe B - Omra Standard",
-        pack: "Omra Standard 10 jours",
-        pilgrimCount: 18,
-        startDate: "2026-04-05",
-        endDate: "2026-04-15",
-      },
-      title: "Perte de documents",
-      message: "Passeport perdu. Le pèlerin est au point de rassemblement.",
-      location: {
-        address: "La Mecque - Zone Tawaf",
-        lat: 21.4225,
-        lng: 39.8262,
-        lastUpdate: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
-      },
-      date: "2026-04-18 21:10",
-      severity: "élevé",
-      status: "en_cours",
-      timeline: [
-        { time: "21:10", text: "Alerte envoyée par le guide", type: "alert" },
-        { time: "21:18", text: "Agence notifiée - traitement en cours", type: "progress" },
-      ],
-    },
-    {
-      id: "sos_3",
-      guideName: "Khaled Trabelsi",
-      guidePhone: "+216 22 555 666",
-      group: {
-        name: "Groupe C - Hajj Express",
-        pack: "Hajj Express 12 jours",
-        pilgrimCount: 30,
-        startDate: "2026-04-10",
-        endDate: "2026-04-22",
-      },
-      title: "Incident de transport",
-      message: "Retard bus + panne. Groupe bloqué. Besoin d'une solution rapide.",
-      location: {
-        address: "Route Jeddah - La Mecque",
-        lat: 21.6,
-        lng: 39.5,
-        lastUpdate: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      },
-      date: "2026-04-17 09:05",
-      severity: "moyen",
-      status: "résolu",
-      timeline: [
-        { time: "09:05", text: "Alerte envoyée par le guide", type: "alert" },
-        { time: "09:22", text: "Agence notifiée - traitement en cours", type: "progress" },
-        { time: "10:45", text: "Problème résolu (bus de remplacement)", type: "resolved" },
-      ],
-    },
-  ]);
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const [filter, setFilter] = useState("tous");
   const [search, setSearch] = useState("");
@@ -123,7 +50,25 @@ function AgencySosAlerts() {
   const [toast, setToast] = useState({ open: false, type: "success", text: "" });
   const [menuState, setMenuState] = useState({ anchorEl: null, alertId: null });
 
-  // Simulate real-time location refresh (every 20s tick to update "il y a Xs")
+  const loadAlerts = async () => {
+    try {
+      setLoadError("");
+      const data = await fetchAgencySosAlerts();
+      setAlerts(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("[SOS] load failed", error);
+      setLoadError(error?.message || "Impossible de charger les alertes SOS.");
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAlerts();
+  }, []);
+
+  // Refresh relative time labels every 20s
   const [, setTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 20 * 1000);
@@ -153,52 +98,33 @@ function AgencySosAlerts() {
       if (filter !== "tous" && a.status !== filter) return false;
       if (!search_lc) return true;
       return (
-        a.guideName.toLowerCase().includes(search_lc) ||
-        a.group.name.toLowerCase().includes(search_lc) ||
-        a.title.toLowerCase().includes(search_lc) ||
-        a.location.address.toLowerCase().includes(search_lc)
+        (a.pilgrimName || "").toLowerCase().includes(search_lc) ||
+        (a.guideName || "").toLowerCase().includes(search_lc) ||
+        (a.group?.name || "").toLowerCase().includes(search_lc) ||
+        (a.title || "").toLowerCase().includes(search_lc) ||
+        (a.location?.address || "").toLowerCase().includes(search_lc)
       );
     });
   }, [alerts, filter, search]);
 
-  const handleMarkInProgress = (id) => {
-    const now = new Date();
-    const timeStr = now.toTimeString().slice(0, 5);
-    setAlerts((prev) =>
-      prev.map((a) =>
-        a.id === id
-          ? {
-              ...a,
-              status: "en_cours",
-              timeline: [
-                ...a.timeline,
-                { time: timeStr, text: "Agence en traitement", type: "progress" },
-              ],
-            }
-          : a
-      )
-    );
-    setToast({ open: true, type: "info", text: "Alerte marquée en cours." });
+  const handleMarkInProgress = async (id) => {
+    try {
+      const { alert } = await updateAgencySosAlertStatus(id, "en_cours");
+      setAlerts((prev) => prev.map((a) => (a.id === id ? alert : a)));
+      setToast({ open: true, type: "info", text: "Alerte marquée en cours." });
+    } catch (error) {
+      setToast({ open: true, type: "error", text: error?.message || "Échec de la mise à jour." });
+    }
   };
 
-  const handleResolve = (id) => {
-    const now = new Date();
-    const timeStr = now.toTimeString().slice(0, 5);
-    setAlerts((prev) =>
-      prev.map((a) =>
-        a.id === id
-          ? {
-              ...a,
-              status: "résolu",
-              timeline: [
-                ...a.timeline,
-                { time: timeStr, text: "Problème résolu", type: "resolved" },
-              ],
-            }
-          : a
-      )
-    );
-    setToast({ open: true, type: "success", text: "Alerte résolue avec succès." });
+  const handleResolve = async (id) => {
+    try {
+      const { alert } = await updateAgencySosAlertStatus(id, "résolu");
+      setAlerts((prev) => prev.map((a) => (a.id === id ? alert : a)));
+      setToast({ open: true, type: "success", text: "Alerte résolue avec succès." });
+    } catch (error) {
+      setToast({ open: true, type: "error", text: error?.message || "Échec de la résolution." });
+    }
   };
 
   const requestAction = (action, id) => {
@@ -232,25 +158,20 @@ function AgencySosAlerts() {
     navigate("/agency/messages", { state: { contactCompanion: guideName } });
   };
 
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     if (!noteDialog.text.trim()) return;
-    const now = new Date();
-    const timeStr = now.toTimeString().slice(0, 5);
-    setAlerts((prev) =>
-      prev.map((a) =>
-        a.id === noteDialog.id
-          ? {
-              ...a,
-              timeline: [
-                ...a.timeline,
-                { time: timeStr, text: `Note agence: ${noteDialog.text}`, type: "note" },
-              ],
-            }
-          : a
-      )
-    );
-    setNoteDialog({ open: false, id: null, text: "" });
-    setToast({ open: true, type: "success", text: "Note ajoutée au dossier." });
+    try {
+      const { alert } = await addAgencySosAlertNote(noteDialog.id, noteDialog.text.trim());
+      setAlerts((prev) => prev.map((a) => (a.id === noteDialog.id ? alert : a)));
+      setNoteDialog({ open: false, id: null, text: "" });
+      setToast({ open: true, type: "success", text: "Note ajoutée au dossier." });
+    } catch (error) {
+      setToast({
+        open: true,
+        type: "error",
+        text: error?.message || "Échec de l'ajout de la note.",
+      });
+    }
   };
 
   const filterButtonSx = (key) => ({
@@ -289,7 +210,7 @@ function AgencySosAlerts() {
                 SOS Alertes
               </MDTypography>
               <MDTypography className="agency-hero__subtitle" variant="button" color="white">
-                Suivi en temps réel des alertes envoyées par les guides.
+                Alertes SOS déclenchées par vos pèlerins (position GPS et dossier groupe).
               </MDTypography>
             </MDBox>
           </MDBox>
@@ -397,7 +318,22 @@ function AgencySosAlerts() {
 
         {/* Alert cards */}
         <MDBox px={3} pb={3}>
-          {filteredAlerts.length === 0 ? (
+          {loading ? (
+            <MDBox textAlign="center" py={6}>
+              <MDTypography variant="button" color="text">
+                Chargement des alertes SOS...
+              </MDTypography>
+            </MDBox>
+          ) : loadError ? (
+            <MDBox textAlign="center" py={6}>
+              <MDTypography variant="button" color="error" display="block" mb={2}>
+                {loadError}
+              </MDTypography>
+              <MDButton variant="gradient" color="success" onClick={loadAlerts}>
+                Réessayer
+              </MDButton>
+            </MDBox>
+          ) : filteredAlerts.length === 0 ? (
             <MDBox textAlign="center" py={6}>
               <Icon sx={{ fontSize: "60px !important", color: "#9e9e9e", mb: 1 }}>
                 notifications_none
@@ -462,8 +398,55 @@ function AgencySosAlerts() {
                       <Divider sx={{ my: 2 }} />
 
                       <Grid container spacing={2}>
+                        {/* Pilgrim info */}
+                        <Grid item xs={12} md={3}>
+                          <MDBox
+                            p={1.5}
+                            borderRadius={2}
+                            sx={{
+                              backgroundColor: "rgba(239, 83, 80, 0.06)",
+                              border: "1px solid rgba(239, 83, 80, 0.15)",
+                              height: "100%",
+                            }}
+                          >
+                            <MDBox display="flex" alignItems="center" gap={0.5} mb={1}>
+                              <Icon sx={{ color: "#ef5350", fontSize: "18px !important" }}>
+                                person
+                              </Icon>
+                              <MDTypography variant="caption" fontWeight="bold" color="dark">
+                                PÈLERIN
+                              </MDTypography>
+                            </MDBox>
+                            <MDTypography
+                              variant="button"
+                              fontWeight="bold"
+                              color="dark"
+                              display="block"
+                            >
+                              {alert.pilgrimName || "—"}
+                            </MDTypography>
+                            <MDTypography variant="caption" color="text" display="block">
+                              <Icon
+                                sx={{
+                                  fontSize: "14px !important",
+                                  verticalAlign: "middle",
+                                  mr: 0.5,
+                                }}
+                              >
+                                phone
+                              </Icon>
+                              {alert.pilgrimPhone || "—"}
+                            </MDTypography>
+                            {alert.pilgrimIdentifier && (
+                              <MDTypography variant="caption" color="text" display="block">
+                                ID {alert.pilgrimIdentifier}
+                              </MDTypography>
+                            )}
+                          </MDBox>
+                        </Grid>
+
                         {/* Guide info */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={3}>
                           <MDBox
                             p={1.5}
                             borderRadius={2}
@@ -505,7 +488,7 @@ function AgencySosAlerts() {
                         </Grid>
 
                         {/* Group info */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={3}>
                           <MDBox
                             p={1.5}
                             borderRadius={2}
@@ -529,19 +512,19 @@ function AgencySosAlerts() {
                               color="dark"
                               display="block"
                             >
-                              {alert.group.name}
+                              {alert.group?.name || "—"}
                             </MDTypography>
                             <MDTypography variant="caption" color="text" display="block">
-                              {alert.group.pack} · {alert.group.pilgrimCount} pèlerins
+                              {alert.group?.pack || "—"} · {alert.group?.pilgrimCount || 0} pèlerins
                             </MDTypography>
                             <MDTypography variant="caption" color="text" display="block">
-                              {alert.group.startDate} → {alert.group.endDate}
+                              {alert.group?.startDate || "—"} → {alert.group?.endDate || "—"}
                             </MDTypography>
                           </MDBox>
                         </Grid>
 
                         {/* Real-time location */}
-                        <Grid item xs={12} md={4}>
+                        <Grid item xs={12} md={3}>
                           <MDBox
                             p={1.5}
                             borderRadius={2}
@@ -605,7 +588,7 @@ function AgencySosAlerts() {
                               color="dark"
                               display="block"
                             >
-                              {alert.location.address}
+                              {alert.location?.address || "—"}
                             </MDTypography>
                             <MDTypography
                               variant="caption"
@@ -613,7 +596,8 @@ function AgencySosAlerts() {
                               display="block"
                               sx={{ fontFamily: "monospace" }}
                             >
-                              {alert.location.lat.toFixed(4)}, {alert.location.lng.toFixed(4)}
+                              {Number(alert.location?.lat || 0).toFixed(4)},{" "}
+                              {Number(alert.location?.lng || 0).toFixed(4)}
                             </MDTypography>
                             <MDTypography variant="caption" color="text" display="block">
                               MAJ {formatRelativeTime(alert.location.lastUpdate)}
@@ -764,7 +748,8 @@ function AgencySosAlerts() {
                 {detailsAlert.title}
               </MDTypography>
               <MDTypography variant="caption" color="text" display="block" mb={2}>
-                {detailsAlert.date} · {detailsAlert.guideName} · {detailsAlert.group.name}
+                {detailsAlert.date} · {detailsAlert.pilgrimName} · {detailsAlert.guideName} ·{" "}
+                {detailsAlert.group?.name}
               </MDTypography>
 
               <MDTypography variant="caption" fontWeight="bold" color="dark" display="block" mb={1}>
