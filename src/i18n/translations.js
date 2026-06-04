@@ -27,7 +27,19 @@ const translations = {
       conceptHeading: "Une infrastructure digitale pensée pour les agences exigeantes",
       ecosystemHeading: "Un écosystème complet pour structurer toute votre chaîne opérationnelle",
       guideappHeading: "Une coordination terrain plus sûre et plus réactive",
-      contactHeading: "Parlons de votre activation sur Sabeel",
+      contactHeading: "Contactez-nous",
+      contactIntro:
+        "Une question sur Sabeel, un partenariat ou l'accès à la plateforme ? Envoyez-nous votre message : notre équipe vous répond sous 24h ouvrées.",
+      contactFormTitle: "Envoyer un message",
+      contactFullName: "Nom complet",
+      contactEmail: "Email professionnel",
+      contactAgency: "Nom de l'agence (optionnel)",
+      contactMessage: "Votre message",
+      contactSubmit: "Envoyer le message",
+      contactSuccess: "Message envoyé. Notre équipe vous contactera très bientôt.",
+      contactError: "Impossible d'envoyer le message. Réessayez dans quelques instants.",
+      contactPrivacy: "Vos informations restent confidentielles — réponse sous 24h ouvrées.",
+      contactEyebrow: "Nous sommes à votre écoute",
     },
     footer: {
       tagline:
@@ -80,7 +92,19 @@ const translations = {
       conceptHeading: "A digital infrastructure designed for demanding agencies",
       ecosystemHeading: "A complete ecosystem to structure your entire operational chain",
       guideappHeading: "Safer, more responsive field coordination",
-      contactHeading: "Let's talk about activating your agency on Sabeel",
+      contactHeading: "Contact us",
+      contactIntro:
+        "Questions about Sabeel, a partnership or platform access? Send us a message and our team will reply within one business day.",
+      contactFormTitle: "Send a message",
+      contactFullName: "Full name",
+      contactEmail: "Professional email",
+      contactAgency: "Agency name (optional)",
+      contactMessage: "Your message",
+      contactSubmit: "Send message",
+      contactSuccess: "Message sent. Our team will contact you soon.",
+      contactError: "Unable to send your message. Please try again shortly.",
+      contactPrivacy: "Your information stays confidential — reply within one business day.",
+      contactEyebrow: "We are here to help",
     },
     footer: {
       tagline:
@@ -132,7 +156,19 @@ const translations = {
       conceptHeading: "بنية رقمية مصممة للوكالات الطموحة",
       ecosystemHeading: "منظومة متكاملة لهيكلة كامل سلسلة عملياتكم",
       guideappHeading: "تنسيق ميداني أكثر أمانًا وتجاوبًا",
-      contactHeading: "لنتحدث عن تفعيل وكالتكم على سبيل",
+      contactHeading: "اتصل بنا",
+      contactIntro:
+        "لديك سؤال حول سبيل أو شراكة أو الوصول إلى المنصة؟ أرسل رسالتك وسيرد فريقنا خلال يوم عمل.",
+      contactFormTitle: "إرسال رسالة",
+      contactFullName: "الاسم الكامل",
+      contactEmail: "البريد المهني",
+      contactAgency: "اسم الوكالة (اختياري)",
+      contactMessage: "رسالتك",
+      contactSubmit: "إرسال الرسالة",
+      contactSuccess: "تم إرسال الرسالة. سيتواصل معك فريقنا قريبًا.",
+      contactError: "تعذر إرسال الرسالة. حاول مرة أخرى بعد قليل.",
+      contactPrivacy: "معلوماتك سرية — الرد خلال يوم عمل.",
+      contactEyebrow: "نحن في خدمتكم",
     },
     footer: {
       tagline:
@@ -184,7 +220,7 @@ const translations = {
       conceptHeading: "Una infraestructura digital pensada para agencias exigentes",
       ecosystemHeading: "Un ecosistema completo para estructurar toda su cadena operativa",
       guideappHeading: "Una coordinación de campo más segura y reactiva",
-      contactHeading: "Hablemos de la activación de su agencia en Sabeel",
+      contactHeading: "Contáctenos",
     },
     footer: {
       tagline:
@@ -236,7 +272,7 @@ const translations = {
       conceptHeading: "Uma infraestrutura digital pensada para agências exigentes",
       ecosystemHeading: "Um ecossistema completo para estruturar toda a cadeia operacional",
       guideappHeading: "Uma coordenação no terreno mais segura e responsiva",
-      contactHeading: "Vamos falar da ativação da sua agência na Sabeel",
+      contactHeading: "Contacte-nos",
     },
     footer: {
       tagline:
@@ -288,7 +324,7 @@ const translations = {
       conceptHeading: "Un'infrastruttura digitale pensata per agenzie esigenti",
       ecosystemHeading: "Un ecosistema completo per strutturare tutta la tua catena operativa",
       guideappHeading: "Un coordinamento sul campo più sicuro e reattivo",
-      contactHeading: "Parliamo dell'attivazione della tua agenzia su Sabeel",
+      contactHeading: "Contattaci",
     },
     footer: {
       tagline:
@@ -341,7 +377,7 @@ const translations = {
       ecosystemHeading:
         "Ein vollständiges Ökosystem zur Strukturierung Ihrer gesamten Betriebskette",
       guideappHeading: "Sicherere und reaktionsschnellere Koordination vor Ort",
-      contactHeading: "Sprechen wir über die Aktivierung Ihrer Agentur auf Sabeel",
+      contactHeading: "Kontaktieren Sie uns",
     },
     footer: {
       tagline:

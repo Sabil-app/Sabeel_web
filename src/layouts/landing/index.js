@@ -7,6 +7,8 @@ import Card from "@mui/material/Card";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import TextField from "@mui/material/TextField";
+import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -19,6 +21,7 @@ import LandingHeader from "layouts/landing/components/Header";
 import LandingFooter from "layouts/landing/components/Footer";
 import SabeelChatBot from "layouts/landing/components/ChatBot";
 import { useTranslation } from "i18n/LanguageContext";
+import { sendComplaint } from "auth/adminAgenceAuth";
 
 // Local Section Styles
 const styles = `
@@ -639,8 +642,68 @@ const styles = `
 
 function Landing() {
   const { t } = useTranslation();
+  const [contactForm, setContactForm] = useState({
+    fullName: "",
+    email: "",
+    agencyName: "",
+    message: "",
+  });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactFeedback, setContactFeedback] = useState({ type: null, text: "" });
+
   const greenStyles = {
     gradient: "linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%)",
+  };
+
+  const handleContactField = (field) => (event) => {
+    setContactForm((prev) => ({ ...prev, [field]: event.target.value }));
+    if (contactFeedback.type) {
+      setContactFeedback({ type: null, text: "" });
+    }
+  };
+
+  const handleContactSubmit = async () => {
+    const { fullName, email, agencyName, message } = contactForm;
+    const trimmedName = fullName.trim();
+    const trimmedEmail = email.trim();
+    const trimmedMessage = message.trim();
+
+    if (!trimmedName || !trimmedEmail || !trimmedMessage) {
+      setContactFeedback({
+        type: "error",
+        text: "Veuillez remplir le nom, l'email et le message.",
+      });
+      return;
+    }
+
+    setContactSubmitting(true);
+    setContactFeedback({ type: null, text: "" });
+
+    try {
+      const agencyLine = agencyName.trim()
+        ? `Agence : ${agencyName.trim()}\n`
+        : "";
+      await sendComplaint({
+        source: "Page d'accueil agence",
+        sourceType: "agency_platform",
+        target: "Plateforme agence",
+        category: "Contactez-nous",
+        sender: `${trimmedName} <${trimmedEmail}>`,
+        message: `${agencyLine}Email : ${trimmedEmail}\n\n${trimmedMessage}`,
+      });
+      setContactForm({ fullName: "", email: "", agencyName: "", message: "" });
+      setContactFeedback({
+        type: "success",
+        text: t("sections.contactSuccess"),
+      });
+    } catch (error) {
+      setContactFeedback({
+        type: "error",
+        text: error?.message || t("sections.contactError"),
+      });
+    } finally {
+      setContactSubmitting(false);
+    }
   };
 
   const scrollToSection = (id) => {
@@ -1366,7 +1429,7 @@ function Landing() {
             <Grid item xs={12} lg={5}>
               <Box className="section-eyebrow">
                 <Icon sx={{ fontSize: "14px !important" }}>mark_email_read</Icon>
-                Démarrons ensemble
+                {t("sections.contactEyebrow")}
               </Box>
               <MDTypography
                 variant="h2"
@@ -1377,9 +1440,7 @@ function Landing() {
                 {t("sections.contactHeading")}
               </MDTypography>
               <MDTypography variant="body1" color="text" mb={6} lineHeight={1.8}>
-                Notre équipe vous accompagne dans la mise en place de votre espace, la validation du
-                dossier et la structuration de vos premiers packs pour un démarrage rapide et
-                professionnel.
+                {t("sections.contactIntro")}
               </MDTypography>
               <MDBox display="flex" flexDirection="column" gap={3}>
                 <MDBox display="flex" alignItems="center" gap={2}>
@@ -1450,26 +1511,56 @@ function Landing() {
                     send
                   </Icon>
                   <MDTypography variant="h6" fontWeight="bold" sx={{ fontSize: "1.05rem" }}>
-                    Demander l&apos;activation de votre espace
+                    {t("sections.contactFormTitle")}
                   </MDTypography>
                 </MDBox>
+                {contactFeedback.type && (
+                  <Alert severity={contactFeedback.type} sx={{ mb: 2 }}>
+                    {contactFeedback.text}
+                  </Alert>
+                )}
                 <Grid container spacing={2.5}>
                   <Grid item xs={12} md={6}>
-                    <TextField fullWidth label="Nom complet" variant="outlined" />
+                    <TextField
+                      fullWidth
+                      label={t("sections.contactFullName")}
+                      variant="outlined"
+                      value={contactForm.fullName}
+                      onChange={handleContactField("fullName")}
+                      disabled={contactSubmitting}
+                    />
                   </Grid>
                   <Grid item xs={12} md={6}>
-                    <TextField fullWidth label="Email professionnel" variant="outlined" />
+                    <TextField
+                      fullWidth
+                      type="email"
+                      label={t("sections.contactEmail")}
+                      variant="outlined"
+                      value={contactForm.email}
+                      onChange={handleContactField("email")}
+                      disabled={contactSubmitting}
+                    />
                   </Grid>
                   <Grid item xs={12}>
-                    <TextField fullWidth label="Nom de l'Agence" variant="outlined" />
+                    <TextField
+                      fullWidth
+                      label={t("sections.contactAgency")}
+                      variant="outlined"
+                      value={contactForm.agencyName}
+                      onChange={handleContactField("agencyName")}
+                      disabled={contactSubmitting}
+                    />
                   </Grid>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
                       multiline
                       rows={4}
-                      label="Votre message"
+                      label={t("sections.contactMessage")}
                       variant="outlined"
+                      value={contactForm.message}
+                      onChange={handleContactField("message")}
+                      disabled={contactSubmitting}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -1479,13 +1570,19 @@ function Landing() {
                       fullWidth
                       size="large"
                       className="button-glow"
+                      disabled={contactSubmitting}
+                      onClick={handleContactSubmit}
                       sx={{
                         py: 1.6,
                         borderRadius: "12px",
                         background: "linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%) !important",
                       }}
                     >
-                      Activer mon espace
+                      {contactSubmitting ? (
+                        <CircularProgress size={22} color="inherit" />
+                      ) : (
+                        t("sections.contactSubmit")
+                      )}
                     </MDButton>
                   </Grid>
                   <Grid item xs={12}>
@@ -1494,7 +1591,7 @@ function Landing() {
                         lock
                       </Icon>
                       <MDTypography variant="caption" color="text" sx={{ fontSize: "0.78rem" }}>
-                        Vos informations restent confidentielles — réponse sous 24h ouvrées.
+                        {t("sections.contactPrivacy")}
                       </MDTypography>
                     </MDBox>
                   </Grid>
