@@ -31,7 +31,8 @@ import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
 // API
-import apiClient, { apiUpload } from "api/apiClient";
+import { apiUpload } from "api/apiClient";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 const SabeelConnector = styled(StepConnector)(() => ({
   [`&.${stepConnectorClasses.alternativeLabel}`]: {
@@ -66,7 +67,9 @@ function GroupForm({
   const [activeStep, setActiveStep] = useState(initialStep);
   const [selectedPilgrims, setSelectedPilgrims] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(initialData?.imageUrl || "");
+  const [previewUrl, setPreviewUrl] = useState(
+    initialData?.imageUrl ? resolveMediaUrl(initialData.imageUrl) : ""
+  );
   const [formData, setFormData] = useState({
     name: initialData?.name || "",
     description: initialData?.description || "",
@@ -83,10 +86,16 @@ function GroupForm({
   };
 
   const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    // Create a local preview immediately
+    const maxSizeBytes = 5 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      alert("L'image dépasse 5 Mo. Choisissez un fichier plus léger.");
+      e.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
     reader.onloadend = () => {
       setPreviewUrl(reader.result);
@@ -99,17 +108,24 @@ function GroupForm({
     setUploading(true);
     try {
       const response = await apiUpload("/admin-agence/groups/upload-image", uploadData);
-      // Update form data with the actual filename from backend
-      setFormData({ ...formData, imageUrl: response.imageUrl });
-      // If backend returns a full URL (presigned), we can also use it
-      if (response.presignedUrl) {
-        setPreviewUrl(response.presignedUrl);
+      const uploadedUrl = response?.publicId || response?.imageUrl || "";
+
+      setFormData((prev) => ({
+        ...prev,
+        imageUrl: uploadedUrl,
+      }));
+
+      if (response?.presignedUrl || response?.imageUrl) {
+        setPreviewUrl(response.presignedUrl || response.imageUrl);
       }
     } catch (error) {
       console.error("Upload failed", error);
-      alert("Échec de l'upload de l'image.");
+      alert(error?.message || "Échec de l'upload de l'image.");
+      setFormData((prev) => ({ ...prev, imageUrl: "" }));
+      setPreviewUrl("");
     } finally {
       setUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -181,7 +197,7 @@ function GroupForm({
                           add_a_photo
                         </Icon>
                         <MDTypography variant="caption" color="text">
-                          Image du groupe
+                          Image du groupe (PNG, JPG — max 5 Mo)
                         </MDTypography>
                       </>
                     )}

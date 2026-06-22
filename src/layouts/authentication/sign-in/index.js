@@ -10,6 +10,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
+import PasswordInput from "components/PasswordInput";
 import MDButton from "components/MDButton";
 
 import PageLayout from "examples/LayoutContainers/PageLayout";
@@ -144,11 +145,8 @@ function SignIn() {
                       />
                     </MDBox>
                     <MDBox mb={2}>
-                      <MDInput
-                        type="password"
+                      <PasswordInput
                         label="Mot de passe"
-                        variant="outlined"
-                        fullWidth
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         disabled={loading}

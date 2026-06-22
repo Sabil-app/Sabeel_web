@@ -8,6 +8,7 @@ import Checkbox from "@mui/material/Checkbox";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
+import PasswordInput from "components/PasswordInput";
 import MDButton from "components/MDButton";
 import { getHomeRouteForRole, signUpAgence } from "auth/adminAgenceAuth";
 
@@ -145,15 +146,13 @@ function SignUp() {
                       />
                     </MDBox>
                     <MDBox mb={2}>
-                      <MDInput
-                        type="password"
+                      <PasswordInput
                         label="Mot de passe"
-                        variant="outlined"
-                        fullWidth
                         value={formData.password}
                         onChange={(e) =>
                           setFormData((prev) => ({ ...prev, password: e.target.value }))
                         }
+                        disabled={isSubmitting}
                       />
                     </MDBox>
                     <MDBox mb={2}>

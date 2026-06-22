@@ -1,5 +1,7 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
+import { apiUpload } from "api/apiClient";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
@@ -28,20 +30,35 @@ function AddGuideForm({ onCancel, onSave, initialData }) {
   );
 
   const [showSuccess, setShowSuccess] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState(
+    initialData?.photo ? resolveMediaUrl(initialData.photo) : ""
+  );
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setGuideData({ ...guideData, [name]: value });
   };
 
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setGuideData({ ...guideData, photo: reader.result });
-      };
-      reader.readAsDataURL(file);
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await apiUpload("/admin-agence/guides/upload-photo", formData);
+
+      const photoUrl = response?.photoUrl || response?.presignedUrl || "";
+      setGuideData((prev) => ({ ...prev, photo: photoUrl }));
+      setPhotoPreviewUrl(response?.presignedUrl || photoUrl);
+    } catch (error) {
+      console.error("Guide photo upload failed", error);
+      alert("Échec de l'upload de la photo du guide.");
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -179,18 +196,22 @@ function AddGuideForm({ onCancel, onSave, initialData }) {
                   justifyContent="center"
                   p={3}
                   borderRadius="lg"
+                  onClick={() =>
+                    !photoUploading && document.getElementById("guide-photo-upload").click()
+                  }
                   sx={{
                     border: "2px dashed #ddd",
                     backgroundColor: "#f8f9fa",
                     cursor: "pointer",
+                    opacity: photoUploading ? 0.6 : 1,
+                    pointerEvents: photoUploading ? "none" : "auto",
                     "&:hover": { borderColor: "dark.main" },
                   }}
-                  onClick={() => document.getElementById("guide-photo-upload").click()}
                 >
-                  {guideData.photo ? (
+                  {photoPreviewUrl || guideData.photo ? (
                     <MDBox
                       component="img"
-                      src={guideData.photo}
+                      src={photoPreviewUrl || resolveMediaUrl(guideData.photo)}
                       alt="Guide"
                       width="120px"
                       height="120px"
@@ -203,7 +224,9 @@ function AddGuideForm({ onCancel, onSave, initialData }) {
                         add_a_photo
                       </Icon>
                       <MDTypography variant="button" color="text" fontWeight="regular">
-                        Cliquez pour télécharger une photo
+                        {photoUploading
+                          ? "Upload en cours..."
+                          : "Cliquez pour télécharger une photo"}
                       </MDTypography>
                     </>
                   )}

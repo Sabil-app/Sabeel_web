@@ -35,6 +35,7 @@ import Icon from "@mui/material/Icon";
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
 import MDInput from "components/MDInput";
+import PasswordInput from "components/PasswordInput";
 import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
 
@@ -338,12 +339,11 @@ function Overview() {
               value={newAdmin.email}
               onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
             />
-            <MDInput
+            <PasswordInput
               label={isEditing ? "Nouveau mot de passe (optionnel)" : "Mot de passe"}
-              type="password"
-              fullWidth
               value={newAdmin.password}
               onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+              disabled={isSubmittingAdmin}
             />
             <FormControl fullWidth>
               <InputLabel id="rules-label">Permissions / Rôles</InputLabel>

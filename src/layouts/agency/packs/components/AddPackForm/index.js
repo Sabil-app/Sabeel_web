@@ -29,6 +29,55 @@ import { apiUpload } from "api/apiClient";
 
 const steps = ["Informations Générales", "Logistique & Guide", "Hébergement & Agence", "Programme"];
 
+const normalizePackData = (data) => {
+  if (!data) return null;
+
+  return {
+    title: data.title || "",
+    price: data.price != null && data.price !== "" ? String(data.price) : "",
+    departureDate: data.departureDate || "",
+    arrivalDate: data.arrivalDate || "",
+    description: data.description || "",
+    hotelMekkah: data.hotelMekkah || "",
+    hotelMekkahStars: data.hotelMekkahStars || "5",
+    hotelMedina: data.hotelMedina || "",
+    hotelMedinaStars: data.hotelMedinaStars || "4",
+    volDirect: data.volDirect !== false,
+    hasEscale: Boolean(data.hasEscale),
+    escaleDetails: data.escaleDetails || "",
+    visaInclus: data.visaInclus !== false,
+    transfert: data.transfert !== false,
+    guideName: data.guideName || "",
+    guideId: data.guideId || "",
+    guideLanguages: Array.isArray(data.guideLanguages) ? data.guideLanguages : [],
+    agencyAddress: data.agencyAddress || "",
+    lat: data.lat != null ? Number(data.lat) : 36.8065,
+    lng: data.lng != null ? Number(data.lng) : 10.1815,
+    imageUrl: data.imageUrl || "",
+    priceSharedRoom: data.priceSharedRoom != null ? String(data.priceSharedRoom) : "",
+    priceIndividualRoom: data.priceIndividualRoom != null ? String(data.priceIndividualRoom) : "",
+    priceAdult: data.priceAdult != null ? String(data.priceAdult) : "",
+    priceChild: data.priceChild != null ? String(data.priceChild) : "",
+    priceSenior: data.priceSenior != null ? String(data.priceSenior) : "",
+    hotelMekkahImages: Array.isArray(data.hotelMekkahImages) ? data.hotelMekkahImages : [],
+    hotelMedinaImages: Array.isArray(data.hotelMedinaImages) ? data.hotelMedinaImages : [],
+    program:
+      Array.isArray(data.program) && data.program.length > 0
+        ? data.program
+        : [{ day: "Jour 1", title: "Arrivée", description: "" }],
+  };
+};
+
+export const buildPackSavePayload = (packData) => {
+  const { id, agencyId, agency, agencyName, agencyLogo, status, createdAt, updatedAt, ...rest } =
+    packData;
+
+  return {
+    ...rest,
+    guideId: rest.guideId || null,
+  };
+};
+
 const SabeelConnector = styled(StepConnector)(({ theme }) => ({
   [`&.${stepConnectorClasses.alternativeLabel}`]: {
     top: 18,
@@ -60,27 +109,20 @@ const SabeelConnector = styled(StepConnector)(({ theme }) => ({
 
 function LeafletMap({ position, onPositionSelect }) {
   const mapRef = useRef(null);
-  const [map, setMap] = useState(null);
-  const [marker, setMarker] = useState(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  const onPositionSelectRef = useRef(onPositionSelect);
 
   useEffect(() => {
-    if (!window.L) {
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.async = true;
-      script.onload = () => initMap();
-      document.body.appendChild(script);
+    onPositionSelectRef.current = onPositionSelect;
+  }, [onPositionSelect]);
 
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(link);
-    } else {
-      initMap();
-    }
+  useEffect(() => {
+    let isCancelled = false;
 
     function initMap() {
-      if (!mapRef.current || map) return;
+      if (!mapRef.current || mapInstanceRef.current || isCancelled) return;
+      if (mapRef.current._leaflet_id) return;
 
       const L = window.L;
       const initialMap = L.map(mapRef.current).setView([position.lat, position.lng], 13);
@@ -95,32 +137,81 @@ function LeafletMap({ position, onPositionSelect }) {
 
       initialMarker.on("dragend", function () {
         const pos = initialMarker.getLatLng();
-        onPositionSelect(pos.lat, pos.lng);
+        onPositionSelectRef.current(pos.lat, pos.lng);
       });
 
       initialMap.on("click", function (e) {
         initialMarker.setLatLng(e.latlng);
-        onPositionSelect(e.latlng.lat, e.latlng.lng);
+        onPositionSelectRef.current(e.latlng.lat, e.latlng.lng);
       });
 
-      setMap(initialMap);
-      setMarker(initialMarker);
+      mapInstanceRef.current = initialMap;
+      markerRef.current = initialMarker;
+
+      requestAnimationFrame(() => {
+        if (!isCancelled && mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      });
+    }
+
+    if (!window.L) {
+      const existingScript = document.querySelector('script[src*="leaflet@1.9.4"]');
+      const existingLink = document.querySelector('link[href*="leaflet@1.9.4"]');
+
+      if (!existingLink) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+
+      if (existingScript) {
+        existingScript.addEventListener("load", initMap);
+      } else {
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        script.async = true;
+        script.onload = initMap;
+        document.body.appendChild(script);
+      }
+    } else {
+      initMap();
     }
 
     return () => {
-      if (map) {
-        map.remove();
+      isCancelled = true;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markerRef.current = null;
       }
     };
-  }, [position]);
+  }, []);
 
-  // Sync map and marker when position prop changes (geocoding)
   useEffect(() => {
-    if (map && marker) {
-      map.setView([position.lat, position.lng], 13);
-      marker.setLatLng([position.lat, position.lng]);
+    const map = mapInstanceRef.current;
+    const marker = markerRef.current;
+    if (!map || !marker) return;
+
+    const updatePosition = () => {
+      if (!mapInstanceRef.current || !markerRef.current) return;
+      markerRef.current.setLatLng([position.lat, position.lng]);
+      mapInstanceRef.current.setView(
+        [position.lat, position.lng],
+        mapInstanceRef.current.getZoom(),
+        {
+          animate: false,
+        }
+      );
+    };
+
+    if (map._loaded) {
+      updatePosition();
+    } else {
+      map.whenReady(updatePosition);
     }
-  }, [position, map, marker]);
+  }, [position.lat, position.lng]);
 
   return (
     <MDBox
@@ -141,8 +232,8 @@ LeafletMap.propTypes = {
   onPositionSelect: PropTypes.func.isRequired,
 };
 
-function AddPackForm({ onCancel, onSave, initialData }) {
-  const [activeStep, setActiveStep] = useState(0);
+function AddPackForm({ onCancel, onSave, initialData, initialStep = 0 }) {
+  const [activeStep, setActiveStep] = useState(initialStep);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [showMekkahDetails, setShowMekkahDetails] = useState(false);
@@ -167,38 +258,49 @@ function AddPackForm({ onCancel, onSave, initialData }) {
   }, []);
 
   const [packData, setPackData] = useState(() => {
-    if (initialData) return { ...initialData };
-    return {
-      title: "",
-      price: "",
-      departureDate: "",
-      arrivalDate: "",
-      description: "",
-      hotelMekkah: "",
-      hotelMekkahStars: "5",
-      hotelMedina: "",
-      hotelMedinaStars: "4",
+    if (initialData) return normalizePackData(initialData);
+    return normalizePackData({
       volDirect: true,
       hasEscale: false,
-      escaleDetails: "",
       visaInclus: true,
       transfert: true,
-      guideName: "",
-      guideLanguages: [],
-      agencyAddress: "",
+      hotelMekkahStars: "5",
+      hotelMedinaStars: "4",
       lat: 36.8065,
       lng: 10.1815,
-      imageUrl: "",
-      priceSharedRoom: "",
-      priceIndividualRoom: "",
-      priceAdult: "",
-      priceChild: "",
-      priceSenior: "",
-      hotelMekkahImages: [],
-      hotelMedinaImages: [],
       program: [{ day: "Jour 1", title: "Arrivée", description: "" }],
-    };
+    });
   });
+
+  useEffect(() => {
+    if (!initialData) return;
+
+    const normalized = normalizePackData(initialData);
+    setPackData(normalized);
+    setPackImagePreviewUrl(normalized.imageUrl || "");
+    setShowMekkahDetails(
+      Boolean(normalized.hotelMekkahStars || normalized.hotelMekkahImages.length > 0)
+    );
+    setShowMedinaDetails(
+      Boolean(normalized.hotelMedinaStars || normalized.hotelMedinaImages.length > 0)
+    );
+    setActiveStep(initialStep);
+  }, [initialData, initialStep]);
+
+  const getSelectedGuideValue = () => {
+    if (packData.guideId) {
+      return availableGuides.find((guide) => guide.id === packData.guideId) || null;
+    }
+
+    if (packData.guideName) {
+      const matchedGuide = availableGuides.find(
+        (guide) => `${guide.firstName || ""} ${guide.lastName || ""}`.trim() === packData.guideName
+      );
+      return matchedGuide || packData.guideName;
+    }
+
+    return null;
+  };
 
   const isStepValid = () => {
     switch (activeStep) {
@@ -273,7 +375,7 @@ function AddPackForm({ onCancel, onSave, initialData }) {
   const handleSubmit = () => {
     setShowSuccess(true);
     setTimeout(() => {
-      onSave(packData);
+      onSave(buildPackSavePayload(packData));
     }, 1500);
   };
 
@@ -475,31 +577,36 @@ function AddPackForm({ onCancel, onSave, initialData }) {
                   if (typeof option === "string") return option;
                   return `${option.firstName || ""} ${option.lastName || ""}`.trim();
                 }}
-                value={null}
-                inputValue={packData.guideName || ""}
-                onInputChange={(event, newInputValue) => {
-                  if (typeof newInputValue === "string") {
-                    setPackData({ ...packData, guideName: newInputValue });
-                  }
-                }}
+                value={getSelectedGuideValue()}
                 onChange={(event, newValue) => {
-                  if (typeof newValue === "string") {
-                    setPackData({ ...packData, guideName: newValue });
+                  if (!newValue) {
+                    setPackData({
+                      ...packData,
+                      guideId: "",
+                      guideName: "",
+                      guideLanguages: [],
+                    });
                     return;
                   }
 
-                  if (newValue && typeof newValue === "object") {
-                    const fullName = `${newValue.firstName || ""} ${
-                      newValue.lastName || ""
-                    }`.trim();
+                  if (typeof newValue === "string") {
                     setPackData({
                       ...packData,
-                      guideName: fullName,
-                      guideLanguages: Array.isArray(newValue.languages)
-                        ? newValue.languages
-                        : packData.guideLanguages,
+                      guideId: "",
+                      guideName: newValue,
                     });
+                    return;
                   }
+
+                  const fullName = `${newValue.firstName || ""} ${newValue.lastName || ""}`.trim();
+                  setPackData({
+                    ...packData,
+                    guideId: newValue.id || "",
+                    guideName: fullName,
+                    guideLanguages: Array.isArray(newValue.languages)
+                      ? newValue.languages
+                      : packData.guideLanguages,
+                  });
                 }}
                 renderInput={(params) => (
                   <MDInput {...params} label="Choisir un guide (Optionnel)" fullWidth />
@@ -1033,7 +1140,7 @@ function AddPackForm({ onCancel, onSave, initialData }) {
                 <Grid item xs={12} md={6}>
                   <LeafletMap
                     position={{ lat: packData.lat, lng: packData.lng }}
-                    onPositionSelect={(lat, lng) => setPackData({ ...packData, lat, lng })}
+                    onPositionSelect={(lat, lng) => setPackData((prev) => ({ ...prev, lat, lng }))}
                   />
                 </Grid>
               </Grid>
@@ -1231,12 +1338,14 @@ function AddPackForm({ onCancel, onSave, initialData }) {
 
 AddPackForm.defaultProps = {
   initialData: null,
+  initialStep: 0,
 };
 
 AddPackForm.propTypes = {
   onCancel: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   initialData: PropTypes.object,
+  initialStep: PropTypes.number,
 };
 
 export default AddPackForm;

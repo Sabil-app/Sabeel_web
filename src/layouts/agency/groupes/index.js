@@ -46,6 +46,7 @@ import AgencyPageShell from "layouts/agency/shared/AgencyPageShell";
 
 // Custom Components
 import GroupForm from "./components/GroupForm";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 function AgencyGroupes() {
   const navigate = useNavigate();
@@ -338,9 +339,8 @@ function AgencyGroupes() {
                         <MDBox
                           component="img"
                           src={
-                            group.imageUrl
-                              ? group.imageUrl
-                              : "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?q=80&w=2070&auto=format&fit=crop"
+                            resolveMediaUrl(group.imageUrl) ||
+                            "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?q=80&w=2070&auto=format&fit=crop"
                           }
                           width="100%"
                           height="100%"
@@ -526,7 +526,7 @@ function AgencyGroupes() {
                   <MDBox
                     component="img"
                     src={
-                      groupDetails.imageUrl ||
+                      resolveMediaUrl(groupDetails.imageUrl) ||
                       "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?q=80&w=2070&auto=format&fit=crop"
                     }
                     width="100%"

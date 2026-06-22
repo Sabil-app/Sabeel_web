@@ -13,6 +13,12 @@ import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import ListItemAvatar from "@mui/material/ListItemAvatar";
+import Avatar from "@mui/material/Avatar";
+import Radio from "@mui/material/Radio";
 
 // Material Dashboard 2 React components
 import MDBox from "components/MDBox";
@@ -26,10 +32,12 @@ import AgencyPageShell from "layouts/agency/shared/AgencyPageShell";
 // API
 import {
   fetchAgencyPackUmrah,
+  fetchAgencyGuides,
   createPackUmrah,
   updatePackUmrah,
   deletePackUmrah,
 } from "auth/adminAgenceAuth";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 // Components
 import AddPackForm from "layouts/agency/packs/components/AddPackForm";
@@ -47,7 +55,16 @@ function AgencyPacks() {
   const [showArchived, setShowArchived] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [packToDelete, setPackToDelete] = useState(null);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [packToAssign, setPackToAssign] = useState(null);
+  const [guides, setGuides] = useState([]);
+  const [guidesLoading, setGuidesLoading] = useState(false);
+  const [selectedGuideId, setSelectedGuideId] = useState("");
+  const [assigningGuide, setAssigningGuide] = useState(false);
+  const [formInitialStep, setFormInitialStep] = useState(0);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+
+  const hasAssignedGuide = (pack) => Boolean(pack?.guideId || pack?.guideName);
 
   // Load packs on mount
   useEffect(() => {
@@ -124,9 +141,75 @@ function AgencyPacks() {
   };
 
   const handleEditPack = (pack) => {
-    setCurrentPack(pack || actionPack);
+    const targetPack = pack || actionPack;
+    if (!targetPack) return;
+    setFormInitialStep(0);
+    setCurrentPack(targetPack);
     setView("edit");
     closeMenu();
+  };
+
+  const loadGuides = async () => {
+    setGuidesLoading(true);
+    try {
+      const data = await fetchAgencyGuides();
+      setGuides(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error.message || "Erreur lors du chargement des guides",
+        severity: "error",
+      });
+      setGuides([]);
+    } finally {
+      setGuidesLoading(false);
+    }
+  };
+
+  const handleOpenAssignGuide = async () => {
+    if (!actionPack) return;
+    setPackToAssign(actionPack);
+    setSelectedGuideId("");
+    setAssignDialogOpen(true);
+    closeMenu();
+    await loadGuides();
+  };
+
+  const handleCloseAssignDialog = () => {
+    setAssignDialogOpen(false);
+    setPackToAssign(null);
+    setSelectedGuideId("");
+  };
+
+  const handleConfirmAssignGuide = async () => {
+    if (!packToAssign || !selectedGuideId) return;
+
+    const guide = guides.find((item) => item.id === selectedGuideId);
+    if (!guide) return;
+
+    setAssigningGuide(true);
+    try {
+      await updatePackUmrah(packToAssign.id, {
+        guideId: guide.id,
+        guideName: `${guide.firstName || ""} ${guide.lastName || ""}`.trim(),
+        guideLanguages: Array.isArray(guide.languages) ? guide.languages : [],
+      });
+      setSnackbar({
+        open: true,
+        message: `Guide affecté au pack "${packToAssign.title}"`,
+        severity: "success",
+      });
+      await loadPacks();
+      handleCloseAssignDialog();
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error.message || "Erreur lors de l'affectation du guide",
+        severity: "error",
+      });
+    } finally {
+      setAssigningGuide(false);
+    }
   };
 
   const handleOpenDetails = (pack) => {
@@ -203,9 +286,11 @@ function AgencyPacks() {
       {view !== "list" ? (
         <AddPackForm
           initialData={currentPack}
+          initialStep={formInitialStep}
           onCancel={() => {
             setView("list");
             setCurrentPack(null);
+            setFormInitialStep(0);
           }}
           onSave={handleSavePack}
         />
@@ -425,7 +510,12 @@ function AgencyPacks() {
         onClose={closeMenu}
         keepMounted
       >
-        <MenuItem onClick={handleEditPack}>
+        {!hasAssignedGuide(actionPack) && (
+          <MenuItem onClick={handleOpenAssignGuide}>
+            <Icon sx={{ mr: 1 }}>person_add</Icon> Affecter Guide
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => handleEditPack(actionPack)}>
           <Icon sx={{ mr: 1 }}>edit</Icon> Modifier
         </MenuItem>
         {actionPack?.isArchived ? (
@@ -550,6 +640,73 @@ function AgencyPacks() {
             }}
           >
             Modifier
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Guide Dialog */}
+      <Dialog open={assignDialogOpen} onClose={handleCloseAssignDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <MDTypography variant="h5" fontWeight="bold">
+            Affecter un guide
+          </MDTypography>
+          <MDTypography variant="button" color="text" display="block" mt={0.5}>
+            Pack : {packToAssign?.title}
+          </MDTypography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {guidesLoading ? (
+            <MDBox display="flex" justifyContent="center" py={4}>
+              <CircularProgress color="success" />
+            </MDBox>
+          ) : guides.length === 0 ? (
+            <MDTypography variant="body2" color="text">
+              Aucun guide disponible. Créez d&apos;abord un guide dans la section Guides.
+            </MDTypography>
+          ) : (
+            <List disablePadding>
+              {guides.map((guide) => {
+                const fullName = `${guide.firstName || ""} ${guide.lastName || ""}`.trim();
+                const languages = Array.isArray(guide.languages) ? guide.languages.join(", ") : "—";
+
+                return (
+                  <ListItemButton
+                    key={guide.id}
+                    selected={selectedGuideId === guide.id}
+                    onClick={() => setSelectedGuideId(guide.id)}
+                    sx={{ borderRadius: "10px", mb: 0.5 }}
+                  >
+                    <ListItemAvatar>
+                      <Avatar src={resolveMediaUrl(guide.photo)} sx={{ bgcolor: "#1b5e20" }}>
+                        {(guide.firstName?.[0] || "G").toUpperCase()}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={fullName || "Guide"}
+                      secondary={`Langues : ${languages}`}
+                    />
+                    <Radio
+                      checked={selectedGuideId === guide.id}
+                      value={guide.id}
+                      color="success"
+                    />
+                  </ListItemButton>
+                );
+              })}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <MDButton onClick={handleCloseAssignDialog} color="dark">
+            Annuler
+          </MDButton>
+          <MDButton
+            variant="gradient"
+            color="success"
+            disabled={!selectedGuideId || assigningGuide || guides.length === 0}
+            onClick={handleConfirmAssignGuide}
+          >
+            {assigningGuide ? "Affectation..." : "Affecter"}
           </MDButton>
         </DialogActions>
       </Dialog>

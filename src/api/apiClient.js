@@ -98,12 +98,24 @@ const apiClient = async (endpoint, options = {}) => {
   }
 };
 
+const formatApiErrorMessage = (message, fallback) => {
+  if (Array.isArray(message)) {
+    return message.join(", ");
+  }
+  if (typeof message === "string" && message.trim()) {
+    return message;
+  }
+  return fallback;
+};
+
 export const apiUpload = async (endpoint, formData) => {
   const token = getToken();
 
   const headers = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    throw new Error("Session expirée. Veuillez vous reconnecter.");
   }
 
   const url = `${BACKEND_URL}${endpoint}`;
@@ -116,12 +128,14 @@ export const apiUpload = async (endpoint, formData) => {
         headers,
         body: formData,
       },
-      60000
+      120000
     );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      throw new Error(
+        formatApiErrorMessage(errorData.message, `Échec de l'upload (HTTP ${response.status}).`)
+      );
     }
 
     return await response.json();

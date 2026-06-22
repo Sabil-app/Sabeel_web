@@ -680,9 +680,7 @@ function Landing() {
     setContactFeedback({ type: null, text: "" });
 
     try {
-      const agencyLine = agencyName.trim()
-        ? `Agence : ${agencyName.trim()}\n`
-        : "";
+      const agencyLine = agencyName.trim() ? `Agence : ${agencyName.trim()}\n` : "";
       await sendComplaint({
         source: "Page d'accueil agence",
         sourceType: "agency_platform",

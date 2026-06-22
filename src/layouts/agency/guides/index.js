@@ -30,6 +30,7 @@ import {
   fetchAgencyGuides,
   updateAgencyGuide,
 } from "auth/adminAgenceAuth";
+import { resolveMediaUrl } from "utils/resolveMediaUrl";
 
 function AgencyGuides() {
   const navigate = useNavigate();
@@ -186,7 +187,7 @@ function AgencyGuides() {
             right={0}
           >
             <Avatar
-              src={guide.photo}
+              src={resolveMediaUrl(guide.photo)}
               alt={guide.lastName}
               sx={{
                 width: 70,
