@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_URL = "http://localhost:3000";
+const DEFAULT_BACKEND_URL = "https://backend-ak3p.onrender.com";
 
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || DEFAULT_BACKEND_URL;
 
