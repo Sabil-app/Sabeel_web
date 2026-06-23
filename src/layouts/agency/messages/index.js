@@ -68,24 +68,61 @@ const mapReservation = (reservation) => ({
   conversationId: reservation.conversationId,
 });
 
-const mapBackendMessage = (message) => ({
-  id: message.id,
-  text: message.content,
-  type: message.senderRole === "agence" ? "out" : "in",
-  time: formatTime(message.createdAt),
+const mapBackendMessage = (message, conversation = null) => {
+  const isOut = message.senderRole === "agence";
+  let senderName = "";
+  let senderRole = "";
+
+  if (message.senderRole === "agence") {
+    senderName = conversation?.agencyDisplayName || "Agence";
+    senderRole = "Agence";
+  } else if (message.senderRole === "system") {
+    senderName = conversation?.supportDisplayName || "Admin Sabeel";
+    senderRole = "Admin";
+  } else if (message.senderRole === "guide") {
+    senderName = conversation?.guideDisplayName || "Guide";
+    senderRole = "Guide";
+  } else {
+    senderName = conversation?.pilgrimDisplayName || "Pèlerin";
+    senderRole = "Pèlerin";
+  }
+
+  return {
+    id: message.id,
+    text: message.content,
+    type: isOut ? "out" : "in",
+    time: formatTime(message.createdAt),
+    senderName,
+    senderRole,
+  };
+};
+
+const buildConversationContext = (conversation) => ({
+  supportDisplayName: conversation?.supportDisplayName,
+  agencyDisplayName: conversation?.agencyDisplayName,
+  guideDisplayName: conversation?.guideDisplayName,
+  pilgrimDisplayName: conversation?.pilgrimDisplayName,
 });
 
 const mapConversation = (conversation, reservation) => {
+  const isSupportConversation = Boolean(conversation.supportAdminId);
   const isPilgrimConversation = Boolean(conversation.pilgrimUserId);
 
-  const name =
-    (isPilgrimConversation ? conversation.pilgrimDisplayName : null) ||
-    (!isPilgrimConversation ? conversation.guideDisplayName : null) ||
-    conversation.agencyDisplayName ||
-    reservation?.pilgrimName ||
-    (isPilgrimConversation ? "Pèlerin" : "Guide");
+  let name;
+  let role;
 
-  const role = isPilgrimConversation ? "Pèlerin" : "Guide";
+  if (isSupportConversation) {
+    name = conversation.supportDisplayName || "Admin Sabeel";
+    role = "Admin";
+  } else {
+    name =
+      (isPilgrimConversation ? conversation.pilgrimDisplayName : null) ||
+      (!isPilgrimConversation ? conversation.guideDisplayName : null) ||
+      conversation.agencyDisplayName ||
+      reservation?.pilgrimName ||
+      (isPilgrimConversation ? "Pèlerin" : "Guide");
+    role = isPilgrimConversation ? "Pèlerin" : "Guide";
+  }
 
   const lastMsg =
     conversation.lastMessageText || (isPilgrimConversation ? "Demande de réservation" : "");
@@ -100,6 +137,13 @@ const mapConversation = (conversation, reservation) => {
     hasReservation: Boolean(conversation.reservationId),
     reservationId: conversation.reservationId,
     reservationStatus: reservation?.status || "pending",
+    isSupportConversation,
+    avatarUrl: isSupportConversation
+      ? conversation.supportImageUrl || null
+      : isPilgrimConversation
+      ? conversation.pilgrimImageUrl || null
+      : conversation.guideImageUrl || null,
+    conversationMeta: buildConversationContext(conversation),
     messages: [],
   };
 };
@@ -172,10 +216,21 @@ function AgencyMessages() {
           setChats((prev) =>
             prev.map((chat) => {
               if (chat.id !== payload.conversation.id) return chat;
-              const nextMsg = mapBackendMessage(payload.message);
+              const context = buildConversationContext({
+                ...chat.conversationMeta,
+                ...payload.conversation,
+              });
+              const nextMsg = mapBackendMessage(payload.message, context);
               if (chat.messages.some((msg) => msg.id === nextMsg.id)) return chat;
               return {
                 ...chat,
+                ...(chat.isSupportConversation && payload.conversation?.supportDisplayName
+                  ? {
+                      name: payload.conversation.supportDisplayName,
+                      role: "Admin",
+                    }
+                  : {}),
+                conversationMeta: context,
                 lastMsg: nextMsg.text || chat.lastMsg,
                 time: nextMsg.time,
                 messages: [...chat.messages, nextMsg],
@@ -203,7 +258,13 @@ function AgencyMessages() {
               const nextMessages = payload?.message
                 ? chat.messages.some((msg) => msg.id === payload.message.id)
                   ? chat.messages
-                  : [...chat.messages, mapBackendMessage(payload.message)]
+                  : [
+                      ...chat.messages,
+                      mapBackendMessage(
+                        payload.message,
+                        buildConversationContext(payload.conversation)
+                      ),
+                    ]
                 : chat.messages;
               return {
                 ...chat,
@@ -244,7 +305,9 @@ function AgencyMessages() {
             chat.id === activeChat
               ? {
                   ...chat,
-                  messages: (details.messages || []).map(mapBackendMessage),
+                  messages: (details.messages || []).map((message) =>
+                    mapBackendMessage(message, buildConversationContext(details.conversation))
+                  ),
                   lastMsg: details.conversation?.lastMessageText || chat.lastMsg,
                   time: formatTime(
                     details.conversation?.lastMessageAt || details.conversation?.createdAt
@@ -360,7 +423,10 @@ function AgencyMessages() {
 
     try {
       const response = await sendConversationMessage(currentChat.id, message.trim());
-      const nextMessage = mapBackendMessage(response.message);
+      const nextMessage = mapBackendMessage(
+        response.message,
+        currentChat.conversationMeta
+      );
 
       setChats((prev) =>
         prev.map((chat) => {
@@ -397,7 +463,10 @@ function AgencyMessages() {
         const nextMessages = response.message
           ? chat.messages.some((msg) => msg.id === response.message.id)
             ? chat.messages
-            : [...chat.messages, mapBackendMessage(response.message)]
+            : [
+                ...chat.messages,
+                mapBackendMessage(response.message, chat.conversationMeta),
+              ]
           : chat.messages;
         return {
           ...chat,
@@ -423,7 +492,10 @@ function AgencyMessages() {
         const nextMessages = response.message
           ? chat.messages.some((msg) => msg.id === response.message.id)
             ? chat.messages
-            : [...chat.messages, mapBackendMessage(response.message)]
+            : [
+                ...chat.messages,
+                mapBackendMessage(response.message, chat.conversationMeta),
+              ]
           : chat.messages;
         return {
           ...chat,
@@ -625,7 +697,12 @@ function AgencyMessages() {
                         onClick={() => setActiveChat(chat.id)}
                       >
                         <MDBox position="relative">
-                          <Avatar sx={{ bgcolor: "success.main" }}>{chat.name[0]}</Avatar>
+                          <Avatar
+                            src={chat.avatarUrl || undefined}
+                            sx={{ bgcolor: "success.main" }}
+                          >
+                            {chat.name[0]}
+                          </Avatar>
                           {chat.online && (
                             <MDBox
                               position="absolute"
@@ -692,7 +769,12 @@ function AgencyMessages() {
                   }}
                 >
                   <MDBox p={2} display="flex" alignItems="center" borderBottom="1px solid #eee">
-                    <Avatar sx={{ bgcolor: "success.main" }}>{currentChat.name[0]}</Avatar>
+                    <Avatar
+                      src={currentChat.avatarUrl || undefined}
+                      sx={{ bgcolor: "success.main" }}
+                    >
+                      {currentChat.name[0]}
+                    </Avatar>
                     <MDBox ml={2} flex={1}>
                       <MDTypography variant="button" fontWeight="bold" display="block">
                         {currentChat.name}
@@ -727,12 +809,24 @@ function AgencyMessages() {
                       gap: 2,
                     }}
                   >
-                    {currentChat.messages.map((msg, idx) => (
+                    {currentChat.messages.map((msg) => (
                       <MDBox
-                        key={idx}
+                        key={msg.id}
                         alignSelf={msg.type === "out" ? "flex-end" : "flex-start"}
                         maxWidth="70%"
                       >
+                        {msg.type === "in" && msg.senderName ? (
+                          <MDBox mb={0.5} ml={0.5}>
+                            <MDTypography variant="caption" fontWeight="bold" color="dark">
+                              {msg.senderName}
+                            </MDTypography>
+                            {msg.senderRole ? (
+                              <MDTypography variant="caption" color="text" display="block">
+                                {msg.senderRole}
+                              </MDTypography>
+                            ) : null}
+                          </MDBox>
+                        ) : null}
                         <MDBox
                           p={1.5}
                           borderRadius="lg"
